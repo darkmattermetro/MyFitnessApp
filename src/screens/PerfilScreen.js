@@ -26,7 +26,8 @@ import {
   updateUser,
   listWeightEntries,
 } from '../services/api';
-import { getCurrentUser, signOut } from '../services/auth';
+import { getCurrentUser, signOut, isDemoMode } from '../services/auth';
+import { resetDemo } from '../services/demoStorage';
 import {
   calcularIMC,
   clasificarIMC,
@@ -91,6 +92,11 @@ export default function PerfilScreen() {
   const cerrarSesion = async () => {
     setConfirmarSalida(false);
     try {
+      if (isDemoMode()) {
+        await resetDemo();
+        toast('Datos demo reiniciados.', 'success');
+        return;
+      }
       await signOut();
     } catch (e) {
       toast(e.message || 'No se pudo cerrar la sesión.', 'error');
@@ -362,20 +368,24 @@ export default function PerfilScreen() {
 
         <Button
           variant="danger"
-          icon="log-out-outline"
+          icon={isDemoMode() ? 'refresh-outline' : 'log-out-outline'}
           onPress={() => setConfirmarSalida(true)}
         >
-          Cerrar sesión
+          {isDemoMode() ? 'Reiniciar datos demo' : 'Cerrar sesión'}
         </Button>
       </Container>
     </ScrollView>
 
     <ConfirmDialog
       visible={confirmarSalida}
-      title="Cerrar sesión"
-      message="¿Querés cerrar tu sesión en este dispositivo?"
-      confirmText="Cerrar sesión"
-      icon="log-out-outline"
+      title={isDemoMode() ? 'Reiniciar datos demo' : 'Cerrar sesión'}
+      message={
+        isDemoMode()
+          ? '¿Querés borrar todos los datos demo y empezar de nuevo?'
+          : '¿Querés cerrar tu sesión en este dispositivo?'
+      }
+      confirmText={isDemoMode() ? 'Reiniciar' : 'Cerrar sesión'}
+      icon={isDemoMode() ? 'refresh-outline' : 'log-out-outline'}
       onConfirm={cerrarSesion}
       onCancel={() => setConfirmarSalida(false)}
     />

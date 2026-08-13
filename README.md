@@ -86,6 +86,16 @@ En Vercel:
 2. Usá `npm run export:web` como build command y `dist/` como output directory.
 3. Agregá la URL del dominio a los redirects de Auth en Supabase.
 
+## Modo demo
+
+Sin base de datos ni Supabase: todos los datos viven en el navegador (localStorage) y se crean datos de ejemplo en el primer arranque (comidas, pesos y preferencias).
+
+- Se activa con `EXPO_PUBLIC_DEMO_MODE=true`, o automáticamente si no hay Supabase configurado (ideal para un deploy de prueba en Vercel sin variables).
+- No hay login: entra directo a la app con un usuario demo.
+- La IA de Gemini sigue funcionando: agregá tu API key en la pestaña Perfil.
+- Desde Perfil podés "Reiniciar datos demo" para volver a los datos de ejemplo.
+- Una barra en la parte superior indica si la app corre en modo demo o producción.
+
 ## Seguridad
 
 - Las migraciones activan Row Level Security: cada usuario solo accede a sus propios datos.

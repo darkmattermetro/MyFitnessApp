@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
@@ -8,7 +8,30 @@ import AuthScreen from './src/screens/AuthScreen';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import ToastProvider from './src/components/Toast';
 import { colors } from './src/theme/colors';
-import { getSession, onAuthStateChange } from './src/services/auth';
+import { getSession, onAuthStateChange, isDemoMode } from './src/services/auth';
+
+const DemoBanner = () => {
+  const demo = isDemoMode();
+  return (
+    <View
+      style={{
+        backgroundColor: demo ? colors.primaryDark : colors.surface,
+        paddingVertical: 6,
+        alignItems: 'center',
+      }}
+    >
+      <Text
+        style={{
+          color: demo ? colors.white : colors.textMuted,
+          fontSize: 12,
+          fontWeight: '600',
+        }}
+      >
+        {demo ? '● MODO DEMO — datos locales' : '● Modo producción'}
+      </Text>
+    </View>
+  );
+};
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -43,6 +66,7 @@ export default function App() {
     <ErrorBoundary>
       <SafeAreaProvider>
         <ToastProvider>
+          <DemoBanner />
           <NavigationContainer>
             <StatusBar style="auto" />
             {session ? <AppNavigator /> : <AuthScreen />}

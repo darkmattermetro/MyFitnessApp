@@ -1,12 +1,35 @@
+// Cliente de Supabase perezoso: no crea el cliente al importar.
+// En modo demo (o sin configurar) el módulo carga sin error; solo falla
+// si se intenta usar Supabase de verdad.
+
 import { createClient } from '@supabase/supabase-js';
-import { config } from '../config';
+import { config, isSupabaseConfigured } from '../config';
 import { storage } from './storage';
 
-export const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    storage,
+let client = null;
+
+function getClient() {
+  if (!client) {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase no configurado. Completá tu .env');
+    }
+    client = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storage,
+      },
+    });
+  }
+  return client;
+}
+
+export const supabase = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      return getClient()[prop];
+    },
   },
-});
+);

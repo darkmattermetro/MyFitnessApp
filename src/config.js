@@ -9,3 +9,13 @@ export const config = {
 export const isSupabaseConfigured = () =>
   config.supabaseUrl.startsWith('https') &&
   !config.supabaseAnonKey.startsWith('PEGA');
+
+// Modo demo: sin base de datos ni Supabase. Todo vive en storage local
+// (AsyncStorage → localStorage en web). Se activa con EXPO_PUBLIC_DEMO_MODE=true
+// o automáticamente si Supabase no está configurado.
+export const isDemoMode = () => {
+  const flag = process.env.EXPO_PUBLIC_DEMO_MODE;
+  if (flag === 'true' || flag === '1') return true;
+  if (flag === 'false' || flag === '0') return false;
+  return !isSupabaseConfigured();
+};
