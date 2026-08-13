@@ -31,7 +31,16 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# AI / agent files
+.claude/
+AGENTS.md
+CLAUDE.md
+PLAN.md
+opencode.md
+*.prompt.md
 
 # typescript
 *.tsbuildinfo
