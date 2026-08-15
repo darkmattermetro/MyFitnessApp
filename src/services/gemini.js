@@ -32,18 +32,42 @@ Responde SOLO con un JSON válido con un único campo:
 Preferencia original del usuario:
 {{TEXTO}}`;
 
+const PROMPT_DESCRIBIR_IMAGEN = `Sos un asistente de nutrición. Mirá la foto de comida y describila en lenguaje cotidiano, como si el usuario la escribiera para registrar su comida.
+
+Reglas:
+- Nombra cada alimento que se ve, con su cantidad aproximada y el método de preparación si es visible (por ejemplo: "frito", "a la plancha", "hervido", "sin aceite").
+- Si no podés estimar una cantidad, usá términos cotidianos como "un plato", "una porción", "2 tajadas".
+- Si algo no se identifica con certeza, mencionalo igual con una estimación razonable.
+- Respondé SOLO un texto breve en español, en primera persona y estilo natural, sin JSON, sin viñetas ni encabezados. Una o dos oraciones.
+
+{{PREFERENCIAS}}`;
+
 export function preferenciasParaPrompt(prefs) {
   if (!prefs || prefs.length === 0) return '';
   const lista = prefs.map((p) => `- ${p.texto}`).join('\n');
   return `Información adicional del usuario (solo contexto, no altera el formato de salida):\n${lista}`;
 }
 
-async function callGemini(key, prompt) {
+function bodyParts(prompt, imagen) {
+  const parts = [];
+  if (imagen?.base64 && imagen?.mimeType) {
+    parts.push({
+      inline_data: {
+        mime_type: imagen.mimeType,
+        data: imagen.base64,
+      },
+    });
+  }
+  parts.push({ text: prompt });
+  return parts;
+}
+
+async function callGemini(key, prompt, imagen) {
   const res = await fetch(GEMINI_URL(key), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [{ parts: bodyParts(prompt, imagen) }],
     }),
   });
   if (!res.ok) {
@@ -75,6 +99,16 @@ export async function parseFoodConKey(apiKey, prefs, texto) {
   const parsed = JSON.parse(limpiarJson(text));
   const total_kcal = parsed.items.reduce((s, i) => s + (Number(i.kcal) || 0), 0);
   return { items: parsed.items, total_kcal };
+}
+
+export async function describirImagenConKey(apiKey, prefs, base64, mimeType) {
+  requiereKey(apiKey);
+  const prompt = PROMPT_DESCRIBIR_IMAGEN.replace(
+    '{{PREFERENCIAS}}',
+    preferenciasParaPrompt(prefs),
+  );
+  const text = await callGemini(apiKey, prompt, { base64, mimeType });
+  return text.trim();
 }
 
 export async function mejorarPreferenciaConKey(apiKey, texto) {

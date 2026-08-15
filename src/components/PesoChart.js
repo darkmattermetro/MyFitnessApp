@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { Pressable, Text, View, StyleSheet } from 'react-native';
+import { Pressable, Text, View, StyleSheet, Platform } from 'react-native';
 import Svg, {
   Line,
   Polyline,
+  Polygon,
   Circle,
+  Defs,
+  LinearGradient as SvgGradient,
+  Stop,
   Text as SvgText,
 } from 'react-native-svg';
 import { colors, spacing } from '../theme/colors';
@@ -30,6 +34,21 @@ export default function PesoChart({
   color = colors.primary,
 }) {
   const [selected, setSelected] = useState(null);
+
+  const resolverPuntoWeb = (evt) => {
+    const rect = evt.currentTarget.getBoundingClientRect();
+    const localX = evt.nativeEvent.clientX - rect.left;
+    let best = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < data.length; i++) {
+      const dist = Math.abs(x(i) - localX);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
+    }
+    setSelected(best);
+  };
 
   if (!data || data.length === 0) {
     return (
@@ -89,9 +108,25 @@ export default function PesoChart({
 
   const tooltip = selected != null ? data[selected] : null;
 
+  const areaPoints =
+    data.length > 1
+      ? `${points} ${x(data.length - 1)},${PAD_TOP + plotH} ${x(0)},${PAD_TOP + plotH}`
+      : null;
+
   return (
-    <View style={{ height, width }}>
+    <View
+      style={{ height, width }}
+      onMouseEnter={Platform.OS === 'web' ? resolverPuntoWeb : undefined}
+      onMouseMove={Platform.OS === 'web' ? resolverPuntoWeb : undefined}
+      onMouseLeave={Platform.OS === 'web' ? () => setSelected(null) : undefined}
+    >
       <Svg width={totalW} height={height}>
+        <Defs>
+          <SvgGradient id="pesoArea" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={color} stopOpacity="0.18" />
+            <Stop offset="1" stopColor={color} stopOpacity="0" />
+          </SvgGradient>
+        </Defs>
         {ticks.map((t, i) => (
           <Line
             key={i}
@@ -126,12 +161,19 @@ export default function PesoChart({
             strokeDasharray="6 4"
           />
         ) : null}
+        {areaPoints ? (
+          <Polygon
+            points={areaPoints}
+            fill="url(#pesoArea)"
+            stroke="none"
+          />
+        ) : null}
         {data.length > 1 ? (
           <Polyline
             points={points}
             fill="none"
             stroke={color}
-            strokeWidth={2}
+            strokeWidth={2.5}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
@@ -141,10 +183,10 @@ export default function PesoChart({
             key={i}
             cx={x(i)}
             cy={y(Number(d.value))}
-            r={selected === i ? 6 : 4}
-            fill={color}
-            stroke={colors.background}
-            strokeWidth={2}
+            r={selected === i ? 7 : 5}
+            fill={selected === i ? color : colors.background}
+            stroke={color}
+            strokeWidth={selected === i ? 3 : 2}
           />
         ))}
         {data.map((d, i) => (
@@ -177,15 +219,17 @@ export default function PesoChart({
 
       {tooltip ? (
         <View
+          pointerEvents="none"
           style={[
             styles.tooltip,
             {
               width: TOOLTIP_W,
-              bottom: height - y(Number(tooltip.value)) + 8,
+              bottom: height - y(Number(tooltip.value)) + 14,
               left: Math.max(4, Math.min(x(selected) - TOOLTIP_W / 2, totalW - TOOLTIP_W - 4)),
             },
           ]}
         >
+          <View style={[styles.tooltipDot, { backgroundColor: color }]} />
           <Text style={styles.tooltipValue}>{tooltip.value} kg</Text>
           <Text style={styles.tooltipFecha}>{tooltip.fechaTexto}</Text>
         </View>
@@ -202,10 +246,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+    boxShadow: '0 4px 10px rgba(0,0,0,0.12)',
+  },
+  tooltipDot: {
+    position: 'absolute',
+    top: 6,
+    left: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   tooltipValue: { fontSize: 13, fontWeight: '700', color: colors.text },
   tooltipFecha: {

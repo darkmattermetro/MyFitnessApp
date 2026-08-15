@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import PesoChart from '../components/PesoChart';
-import { Button, Card, ChipGroup, Container, EmptyState } from '../components/ui';
+import { Button, Card, ChipGroup, Container, EmptyState, Grid, GridItem, useResponsive } from '../components/ui';
 import PeriodFilter, { periodoRango } from '../components/PeriodFilter';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
@@ -58,6 +58,7 @@ function decimar(lista, max) {
 
 export default function PesoScreen() {
   const { width } = useWindowDimensions();
+  const { isDesktop } = useResponsive();
   const [peso, setPeso] = useState('');
   const [entries, setEntries] = useState([]);
   const [lista, setLista] = useState([]);
@@ -212,9 +213,90 @@ export default function PesoScreen() {
   })();
 
   const chartWidth = (() => {
-    const inner = Platform.OS === 'web' ? Math.min(width, 600) : width;
+    const inner = isDesktop ? Math.min(width, 1120) : width;
     return Math.max(inner - spacing.md * 4 - 2, 200);
   })();
+
+  const chartCard = (
+    <Card>
+      <ChipGroup
+        options={[
+          { value: 'dia', label: 'Promedio por día' },
+          { value: 'todos', label: 'Todos los registros' },
+        ]}
+        value={modo}
+        onChange={setModo}
+      />
+      <View style={styles.chartWrap}>
+        <PesoChart
+          data={chartData}
+          meta={meta}
+          width={chartWidth}
+          height={230}
+          color={colors.primary}
+        />
+      </View>
+      {meta != null ? (
+        <Text style={styles.metaTexto}>Línea punteada: meta {meta} kg</Text>
+      ) : null}
+    </Card>
+  );
+
+  const inputCard = (
+    <Card style={styles.inputCard}>
+      <View style={styles.inputRow}>
+        <TextInput
+          style={styles.input}
+          keyboardType="decimal-pad"
+          placeholder="78.5"
+          placeholderTextColor={colors.textMuted}
+          value={peso}
+          onChangeText={setPeso}
+        />
+        <Text style={styles.unidad}>kg</Text>
+      </View>
+      <Button
+        variant="primary"
+        icon="add"
+        onPress={registrar}
+        disabled={saving}
+        loading={saving}
+      >
+        Registrar
+      </Button>
+    </Card>
+  );
+
+  const registrosCard = lista.length > 0 ? (
+    <View style={styles.lista}>
+      <Text style={styles.listaTitulo}>Registros</Text>
+      {lista.map((e) => (
+        <Card key={e.id} style={styles.itemCard}>
+          <View style={styles.itemInfo}>
+            <Text style={styles.itemPeso}>{e.peso_kg} kg</Text>
+            <Text style={styles.itemFecha}>
+              {formatFecha(e.measured_at)} · {formatHora(e.measured_at)}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => eliminar(e.id)} hitSlop={8}>
+            <Ionicons name="trash-outline" size={18} color={colors.danger} />
+          </TouchableOpacity>
+        </Card>
+      ))}
+      {hasMore ? (
+        <Button
+          variant="secondary"
+          icon="chevron-down"
+          onPress={cargarMas}
+          loading={cargandoMas}
+          disabled={cargandoMas}
+          style={styles.masBtn}
+        >
+          Cargar más
+        </Button>
+      ) : null}
+    </View>
+  ) : null;
 
   return (
     <>
@@ -238,92 +320,34 @@ export default function PesoScreen() {
           </Text>
         ) : null}
 
-        <Card style={styles.inputCard}>
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.input}
-              keyboardType="decimal-pad"
-              placeholder="78.5"
-              placeholderTextColor={colors.textMuted}
-              value={peso}
-              onChangeText={setPeso}
-            />
-            <Text style={styles.unidad}>kg</Text>
-          </View>
-          <Button
-            variant="primary"
-            icon="add"
-            onPress={registrar}
-            disabled={saving}
-            loading={saving}
-          >
-            Registrar
-          </Button>
-        </Card>
-
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        {entries.length > 0 ? (
-          <Card>
-            <ChipGroup
-              options={[
-                { value: 'dia', label: 'Promedio por día' },
-                { value: 'todos', label: 'Todos los registros' },
-              ]}
-              value={modo}
-              onChange={setModo}
+        {entries.length === 0 ? (
+          <>
+            {inputCard}
+            <EmptyState
+              icon="scale-outline"
+              title="Registrá tu primer peso"
+              hint="Vas a ver tu curva acá en la pestaña Peso."
             />
-            <View style={styles.chartWrap}>
-              <PesoChart
-                data={chartData}
-                meta={meta}
-                width={chartWidth}
-                height={230}
-                color={colors.primary}
-              />
-            </View>
-            {meta != null ? (
-              <Text style={styles.metaTexto}>Línea punteada: meta {meta} kg</Text>
-            ) : null}
-          </Card>
+          </>
+        ) : isDesktop ? (
+          <Grid cols={2}>
+            <GridItem cols={1}>
+              {chartCard}
+            </GridItem>
+            <GridItem cols={1}>
+              {inputCard}
+              {registrosCard}
+            </GridItem>
+          </Grid>
         ) : (
-          <EmptyState
-            icon="scale-outline"
-            title="Registrá tu primer peso"
-            hint="Vas a ver tu curva acá en la pestaña Peso."
-          />
+          <>
+            {inputCard}
+            {chartCard}
+            {registrosCard}
+          </>
         )}
-
-        {lista.length > 0 ? (
-          <View style={styles.lista}>
-            <Text style={styles.listaTitulo}>Registros</Text>
-            {lista.map((e) => (
-              <Card key={e.id} style={styles.itemCard}>
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemPeso}>{e.peso_kg} kg</Text>
-                  <Text style={styles.itemFecha}>
-                    {formatFecha(e.measured_at)} · {formatHora(e.measured_at)}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => eliminar(e.id)} hitSlop={8}>
-                  <Ionicons name="trash-outline" size={18} color={colors.danger} />
-                </TouchableOpacity>
-              </Card>
-            ))}
-            {hasMore ? (
-              <Button
-                variant="secondary"
-                icon="chevron-down"
-                onPress={cargarMas}
-                loading={cargandoMas}
-                disabled={cargandoMas}
-                style={styles.masBtn}
-              >
-                Cargar más
-              </Button>
-            ) : null}
-          </View>
-        ) : null}
       </Container>
       </ScrollView>
 

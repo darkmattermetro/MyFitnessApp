@@ -3,9 +3,11 @@ export const colors = {
   primaryDark: '#15803D',
   primarySoft: '#DCFCE7',
   primaryTrack: '#EAF8F0',
+  primaryGradient: ['#16A34A', '#0E7A38'],
   background: '#F6F7F9',
   surface: '#FFFFFF',
   surfaceMuted: '#F3F4F6',
+  surfaceHover: '#F0FDF4',
   text: '#1A1D21',
   textMuted: '#6B7280',
   border: '#E7E9EC',
@@ -29,7 +31,7 @@ export const spacing = {
 export const radius = {
   sm: 8,
   md: 12,
-  lg: 16,
+  lg: 18,
   pill: 999,
 };
 

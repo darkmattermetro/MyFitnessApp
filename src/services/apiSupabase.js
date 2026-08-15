@@ -4,7 +4,7 @@
 import { supabase } from './supabaseClient';
 import { config } from '../config';
 import { getCurrentUserId } from './auth';
-import { parseFoodConKey, mejorarPreferenciaConKey } from './gemini';
+import { parseFoodConKey, mejorarPreferenciaConKey, describirImagenConKey } from './gemini';
 
 function assertConfigured() {
   if (!config.supabaseUrl || config.supabaseUrl.startsWith('PEGA')) {
@@ -250,6 +250,13 @@ export async function parseFood(texto) {
   const user = await getUser();
   const prefs = await listUserPreferences();
   return parseFoodConKey(user.gemini_api_key, prefs, texto);
+}
+
+export async function describeFoodImage(base64, mimeType) {
+  assertConfigured();
+  const user = await getUser();
+  const prefs = await listUserPreferences();
+  return describirImagenConKey(user.gemini_api_key, prefs, base64, mimeType);
 }
 
 export async function mejorarPreferencia(texto) {

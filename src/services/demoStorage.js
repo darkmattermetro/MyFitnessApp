@@ -1,9 +1,11 @@
 // Almacenamiento local del modo demo.
 // Replica el esquema de Supabase (users, food_entries, weight_entries,
 // user_preferences) usando AsyncStorage (localStorage en web).
+// El perfil del usuario (que contiene la API key de Gemini) va en
+// SecureStore; el resto de datos demo en AsyncStorage.
 // No hay persistencia remota: todo vive en el dispositivo/navegador.
 
-import { storage } from './storage';
+import { storage, secureStorage } from './storage';
 
 const KEYS = {
   user: 'demo:user',
@@ -15,9 +17,9 @@ const KEYS = {
 
 export const DEMO_USER_ID = 'demo-user';
 
-async function read(key, fallback) {
+async function read(store, key, fallback) {
   try {
-    const raw = await storage.getItem(key);
+    const raw = await store.getItem(key);
     if (raw == null) return fallback;
     return JSON.parse(raw);
   } catch {
@@ -25,8 +27,8 @@ async function read(key, fallback) {
   }
 }
 
-async function write(key, value) {
-  await storage.setItem(key, JSON.stringify(value));
+async function write(store, key, value) {
+  await store.setItem(key, JSON.stringify(value));
 }
 
 function isoOffset(dias, horas = 0) {
@@ -130,70 +132,79 @@ function prefSeed() {
 }
 
 export async function seedDemoIfNeeded() {
-  const seeded = await read(KEYS.seeded, false);
+  const seeded = await read(storage, KEYS.seeded, false);
   if (seeded) return;
 
-  await write(KEYS.user, {
-    id: DEMO_USER_ID,
-    objetivo_kcal: 2000,
-    meta_peso_kg: 76,
-    gemini_api_key: '',
-    altura_cm: 175,
-    sexo: 'hombre',
-    edad: 28,
-    nivel_actividad: 1.375,
-    created_at: new Date().toISOString(),
-  });
-  await write(KEYS.food, foodSeed());
-  await write(KEYS.weight, weightSeed());
-  await write(KEYS.prefs, prefSeed());
-  await write(KEYS.seeded, true);
+  try {
+    await write(secureStorage, KEYS.user, {
+      id: DEMO_USER_ID,
+      objetivo_kcal: 2000,
+      meta_peso_kg: 76,
+      gemini_api_key: '',
+      altura_cm: 175,
+      sexo: 'hombre',
+      edad: 28,
+      nivel_actividad: 1.375,
+      created_at: new Date().toISOString(),
+    });
+    await write(storage, KEYS.food, foodSeed());
+    await write(storage, KEYS.weight, weightSeed());
+    await write(storage, KEYS.prefs, prefSeed());
+    await write(storage, KEYS.seeded, true);
+  } catch {
+    // Si falla el storage no bloqueamos el arranque de la app.
+  }
 }
 
 export async function resetDemo() {
   await Promise.all(
-    [KEYS.user, KEYS.food, KEYS.weight, KEYS.prefs, KEYS.seeded].map((k) =>
-      storage.removeItem(k),
-    ),
+    [
+      storage.removeItem(KEYS.user),
+      storage.removeItem(KEYS.food),
+      storage.removeItem(KEYS.weight),
+      storage.removeItem(KEYS.prefs),
+      storage.removeItem(KEYS.seeded),
+      secureStorage.removeItem(KEYS.user),
+    ].map((p) => p.catch(() => {})),
   );
   await seedDemoIfNeeded();
 }
 
 export async function demoGetUser() {
   await seedDemoIfNeeded();
-  return read(KEYS.user, null);
+  return read(secureStorage, KEYS.user, null);
 }
 
 export async function demoSaveUser(user) {
-  await write(KEYS.user, user);
+  await write(secureStorage, KEYS.user, user);
   return user;
 }
 
 export async function demoGetFood() {
   await seedDemoIfNeeded();
-  return read(KEYS.food, []);
+  return read(storage, KEYS.food, []);
 }
 
 export async function demoSaveFood(rows) {
-  await write(KEYS.food, rows);
+  await write(storage, KEYS.food, rows);
 }
 
 export async function demoGetWeight() {
   await seedDemoIfNeeded();
-  return read(KEYS.weight, []);
+  return read(storage, KEYS.weight, []);
 }
 
 export async function demoSaveWeight(rows) {
-  await write(KEYS.weight, rows);
+  await write(storage, KEYS.weight, rows);
 }
 
 export async function demoGetPrefs() {
   await seedDemoIfNeeded();
-  return read(KEYS.prefs, []);
+  return read(storage, KEYS.prefs, []);
 }
 
 export async function demoSavePrefs(rows) {
-  await write(KEYS.prefs, rows);
+  await write(storage, KEYS.prefs, rows);
 }
 
 export function nextId(prefix) {

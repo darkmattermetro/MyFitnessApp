@@ -13,15 +13,60 @@ import { colors, font, radius, spacing } from '../theme/colors';
 
 const IS_WEB = Platform.OS === 'web';
 
+export const BREAKPOINT_DESKTOP = 900;
+
+export function useResponsive() {
+  const { width } = useWindowDimensions();
+  return {
+    width,
+    isWeb: IS_WEB,
+    isDesktop: IS_WEB && width >= BREAKPOINT_DESKTOP,
+    isMobile: !IS_WEB || width < BREAKPOINT_DESKTOP,
+  };
+}
+
 // ---- Layout ----
 export function Container({ children, style }) {
-  const { width } = useWindowDimensions();
-  const wide = IS_WEB && width >= 900;
+  const { isDesktop } = useResponsive();
   return (
     <View
       style={[
-        wide && { width: '100%', maxWidth: 600, alignSelf: 'center' },
+        isDesktop && { width: '100%', maxWidth: 1120, alignSelf: 'center' },
         { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+export function Grid({ cols = 2, gap = spacing.md, children, style }) {
+  const { isDesktop } = useResponsive();
+  return (
+    <View
+      style={[
+        isDesktop && { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -gap / 2 },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+export function GridItem({ cols = 2, children, style }) {
+  const { isDesktop } = useResponsive();
+  return (
+    <View
+      style={[
+        isDesktop
+          ? {
+              width: `${100 / cols}%`,
+              paddingHorizontal: spacing.md / 2,
+              marginBottom: spacing.md,
+            }
+          : { marginBottom: spacing.md },
         style,
       ]}
     >
@@ -40,7 +85,7 @@ export const cardShadow = (() => {
   if (IS_WEB) {
     return {
       ...base,
-      boxShadow: '0 1px 2px rgba(16,24,40,0.04), 0 4px 12px rgba(16,24,40,0.05)',
+      boxShadow: '0 1px 2px rgba(16,24,40,0.05), 0 8px 24px rgba(16,24,40,0.06)',
     };
   }
   return {
@@ -187,6 +232,7 @@ export function Button({
   style,
   icon,
 }) {
+  const [hovered, setHovered] = useState(false);
   const palettes = {
     primary: { bg: colors.primary, border: colors.primary, textColor: colors.white },
     secondary: { bg: colors.surface, border: colors.borderStrong, textColor: colors.text },
@@ -199,6 +245,8 @@ export function Button({
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled || loading}
+      onMouseEnter={IS_WEB ? () => setHovered(true) : undefined}
+      onMouseLeave={IS_WEB ? () => setHovered(false) : undefined}
       style={[
         palette.bg === 'transparent' ? {} : { backgroundColor: palette.bg, borderWidth: 1, borderColor: palette.border },
         {
@@ -211,6 +259,13 @@ export function Button({
           paddingHorizontal: spacing.lg,
           opacity: disabled ? 0.45 : 1,
           ...(IS_WEB ? { cursor: 'pointer' } : {}),
+          ...(IS_WEB && hovered && variant === 'primary'
+            ? { backgroundColor: colors.primaryDark, borderColor: colors.primaryDark, boxShadow: '0 6px 16px rgba(22,163,74,0.28)' }
+            : {}),
+          ...(IS_WEB && hovered && variant === 'secondary'
+            ? { backgroundColor: colors.surfaceMuted, borderColor: colors.borderStrong }
+            : {}),
+          ...(IS_WEB ? { transition: 'background-color 150ms ease, box-shadow 150ms ease' } : {}),
         },
         style,
       ]}

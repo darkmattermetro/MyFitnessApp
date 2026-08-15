@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { Badge, Button, Card, Container, EmptyState, Field, Input, SectionLabel } from '../components/ui';
+import { Badge, Button, Card, Container, EmptyState, Field, Input, SectionLabel, Grid, GridItem, useResponsive } from '../components/ui';
 import PeriodFilter, { periodoRango } from '../components/PeriodFilter';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
@@ -68,6 +68,7 @@ function itemsArray(items) {
 const PAGE = 30;
 
 export default function HistorialScreen() {
+  const { isDesktop } = useResponsive();
   const [entries, setEntries] = useState([]);
   const [periodo, setPeriodo] = useState('7d');
   const [hasMore, setHasMore] = useState(false);
@@ -253,6 +254,7 @@ export default function HistorialScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <Container>
+          <Text style={styles.title}>Historial</Text>
           <PeriodFilter value={periodo} onChange={cambiarPeriodo} />
 
           {cargando ? (
@@ -272,6 +274,58 @@ export default function HistorialScreen() {
               title="No hay comidas en este período"
               hint="Registrá algo en la pestaña Comida o cambiá el filtro de fecha."
             />
+          ) : isDesktop ? (
+            <Grid cols={2}>
+              {groups.map(([dia, delDia]) => {
+                const totalDia = delDia.reduce(
+                  (s, e) => s + (Number(e.total_kcal) || 0),
+                  0,
+                );
+                return (
+                  <GridItem key={dia} cols={1}>
+                    <View style={styles.diaHeader}>
+                      <Text style={styles.diaTitulo}>{formatFecha(dia)}</Text>
+                      <Badge>{Math.round(totalDia)} kcal</Badge>
+                    </View>
+                    {delDia.map((e) => (
+                      <Card key={e.id} style={styles.card}>
+                        <View style={styles.cardHeader}>
+                          <Text style={styles.cardTitulo}>{e.texto_original}</Text>
+                          <Text style={styles.cardHora}>{formatHora(e.fecha)}</Text>
+                        </View>
+                        {itemsArray(e.items).length > 0 ? (
+                          <View style={styles.items}>
+                            {itemsArray(e.items).map((it, i) => (
+                              <Text key={i} style={styles.itemTexto}>
+                                • {it.nombre} ({it.cantidad}) — {Math.round(it.kcal)} kcal
+                              </Text>
+                            ))}
+                          </View>
+                        ) : null}
+                        <View style={styles.cardActions}>
+                          <TouchableOpacity
+                            style={styles.actionBtn}
+                            onPress={() => abrirEdicion(e)}
+                            hitSlop={6}
+                          >
+                            <Ionicons name="create-outline" size={16} color={colors.primary} />
+                            <Text style={styles.actionEditar}>Editar</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.actionBtn}
+                            onPress={() => confirmarEliminar(e.id)}
+                            hitSlop={6}
+                          >
+                            <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                            <Text style={styles.actionBorrar}>Eliminar</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </Card>
+                    ))}
+                  </GridItem>
+                );
+              })}
+            </Grid>
           ) : (
             groups.map(([dia, delDia]) => {
               const totalDia = delDia.reduce(
@@ -463,6 +517,7 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   error: { color: colors.danger, textAlign: 'center' },
+  title: { fontSize: font.xl, fontWeight: '800', color: colors.text, marginBottom: spacing.md },
   dia: { marginBottom: spacing.lg },
   contador: { fontSize: font.sm, color: colors.textMuted, marginTop: spacing.md, marginBottom: spacing.md },
   spinner: { marginVertical: spacing.md },

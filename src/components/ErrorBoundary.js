@@ -53,5 +53,5 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  btnText: { color: colors.onPrimary, fontSize: font.base, fontWeight: '700' },
+  btnText: { color: colors.white, fontSize: font.base, fontWeight: '700' },
 });

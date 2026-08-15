@@ -22,4 +22,5 @@ export const listUserPreferences = api.listUserPreferences;
 export const createUserPreference = api.createUserPreference;
 export const deleteUserPreference = api.deleteUserPreference;
 export const parseFood = api.parseFood;
+export const describeFoodImage = api.describeFoodImage;
 export const mejorarPreferencia = api.mejorarPreferencia;

@@ -28,6 +28,14 @@
     "plugins": [
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "OpenFit usa tus fotos para describir y registrar las comidas que comés.",
+          "cameraPermission": "OpenFit usa la cámara para fotografiar y registrar las comidas que comés.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#044134",

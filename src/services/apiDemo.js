@@ -13,7 +13,7 @@ import {
   demoGetPrefs,
   demoSavePrefs,
 } from './demoStorage';
-import { parseFoodConKey, mejorarPreferenciaConKey } from './gemini';
+import { parseFoodConKey, mejorarPreferenciaConKey, describirImagenConKey } from './gemini';
 
 function parseItems(items) {
   if (Array.isArray(items)) return items;
@@ -183,6 +183,12 @@ export async function parseFood(texto) {
   const user = await getUser();
   const prefs = await listUserPreferences();
   return parseFoodConKey(user.gemini_api_key, prefs, texto);
+}
+
+export async function describeFoodImage(base64, mimeType) {
+  const user = await getUser();
+  const prefs = await listUserPreferences();
+  return describirImagenConKey(user.gemini_api_key, prefs, base64, mimeType);
 }
 
 export async function mejorarPreferencia(texto) {

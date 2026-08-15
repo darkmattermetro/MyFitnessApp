@@ -17,6 +17,9 @@ import {
   Field,
   Input,
   SectionLabel,
+  Grid,
+  GridItem,
+  useResponsive,
 } from '../components/ui';
 import { useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -37,6 +40,7 @@ import {
 } from '../utils/nutricion';
 
 export default function PerfilScreen() {
+  const { isDesktop } = useResponsive();
   const [objetivoKcal, setObjetivoKcal] = useState('');
   const [metaPeso, setMetaPeso] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -309,62 +313,70 @@ export default function PerfilScreen() {
           </Card>
         ) : null}
 
-        <Card style={styles.formCard}>
-          <SectionLabel>IA</SectionLabel>
-          <Field
-            label="API key de Gemini"
-            hint="Tu propia clave de https://aistudio.google.com/apikey. Se usa para interpretar tus comidas."
-          >
-            <Input
-              value={apiKey}
-              onChangeText={setApiKey}
-              placeholder="Tu API key"
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-            />
-          </Field>
-        </Card>
+        <Grid cols={2}>
+          <GridItem cols={1}>
+            <Card style={styles.formCard}>
+              <SectionLabel>IA</SectionLabel>
+              <Field
+                label="API key de Gemini"
+                hint="Tu propia clave de https://aistudio.google.com/apikey. Se usa para interpretar tus comidas."
+              >
+                <Input
+                  value={apiKey}
+                  onChangeText={setApiKey}
+                  placeholder="Tu API key"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry
+                />
+              </Field>
+            </Card>
+          </GridItem>
 
-        <Card style={styles.formCard}>
-          <SectionLabel>Salud</SectionLabel>
-          <TouchableOpacity
-            style={styles.saludRow}
-            onPress={() => setVista('calculadora')}
-          >
-            <View style={styles.saludIcon}>
-              <Ionicons name="fitness" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.saludInfo}>
-              <Text style={styles.saludLabel}>Calcular IMC y calorías</Text>
-              <Text style={styles.saludHint}>
-                Calculá tu IMC y cuántas kcal deberías consumir por día.
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-        </Card>
+          <GridItem cols={1}>
+            <Card style={styles.formCard}>
+              <SectionLabel>Salud</SectionLabel>
+              <TouchableOpacity
+                style={styles.saludRow}
+                onPress={() => setVista('calculadora')}
+              >
+                <View style={styles.saludIcon}>
+                  <Ionicons name="fitness" size={20} color={colors.primary} />
+                </View>
+                <View style={styles.saludInfo}>
+                  <Text style={styles.saludLabel}>Calcular IMC y calorías</Text>
+                  <Text style={styles.saludHint}>
+                    Calculá tu IMC y cuántas kcal deberías consumir por día.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </Card>
+          </GridItem>
 
-        <Card style={styles.formCard}>
-          <SectionLabel>Objetivos</SectionLabel>
-          <Field label="Objetivo calórico diario (kcal)">
-            <Input
-              value={objetivoKcal}
-              onChangeText={setObjetivoKcal}
-              keyboardType="numeric"
-              placeholder="2000"
-            />
-          </Field>
+          <GridItem cols={1}>
+            <Card style={styles.formCard}>
+              <SectionLabel>Objetivos</SectionLabel>
+              <Field label="Objetivo calórico diario (kcal)">
+                <Input
+                  value={objetivoKcal}
+                  onChangeText={setObjetivoKcal}
+                  keyboardType="numeric"
+                  placeholder="2000"
+                />
+              </Field>
 
-          <Field label="Meta de peso (kg)">
-            <Input
-              value={metaPeso}
-              onChangeText={setMetaPeso}
-              keyboardType="decimal-pad"
-              placeholder="Opcional"
-            />
-          </Field>
-        </Card>
+              <Field label="Meta de peso (kg)">
+                <Input
+                  value={metaPeso}
+                  onChangeText={setMetaPeso}
+                  keyboardType="decimal-pad"
+                  placeholder="Opcional"
+                />
+              </Field>
+            </Card>
+          </GridItem>
+        </Grid>
 
         <Button
           variant="danger"
