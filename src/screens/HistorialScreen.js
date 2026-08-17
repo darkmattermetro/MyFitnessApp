@@ -54,11 +54,20 @@ function agruparPorDia(entries) {
     if (!grupos.has(key)) grupos.set(key, []);
     grupos.get(key).push(e);
   }
-  return [...grupos.entries()].sort((a, b) => {
+  const porDia = [...grupos.entries()].sort((a, b) => {
     if (a[0] === 'Sin fecha') return 1;
     if (b[0] === 'Sin fecha') return -1;
     return a[0] < b[0] ? 1 : -1;
   });
+  return porDia.map(([dia, delDia]) => [
+    dia,
+    [...delDia].sort((x, y) => {
+      const tx = parseFecha(x.fecha)?.getTime() ?? 0;
+      const ty = parseFecha(y.fecha)?.getTime() ?? 0;
+      if (ty !== tx) return ty - tx;
+      return String(y.created_at ?? '').localeCompare(String(x.created_at ?? ''));
+    }),
+  ]);
 }
 
 function itemsArray(items) {
