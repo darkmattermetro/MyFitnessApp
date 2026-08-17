@@ -51,17 +51,17 @@ function agruparPorDia(entries) {
   for (const e of entries) {
     const d = parseFecha(e.fecha);
     const key = d ? d.toDateString() : 'Sin fecha';
-    if (!grupos.has(key)) grupos.set(key, []);
-    grupos.get(key).push(e);
+    if (!grupos.has(key)) grupos.set(key, { fecha: d, entries: [] });
+    grupos.get(key).entries.push(e);
   }
   const porDia = [...grupos.entries()].sort((a, b) => {
-    if (a[0] === 'Sin fecha') return 1;
-    if (b[0] === 'Sin fecha') return -1;
-    return a[0] < b[0] ? 1 : -1;
+    if (a[1].fecha == null) return 1;
+    if (b[1].fecha == null) return -1;
+    return b[1].fecha - a[1].fecha;
   });
-  return porDia.map(([dia, delDia]) => [
+  return porDia.map(([dia, g]) => [
     dia,
-    [...delDia].sort((x, y) => {
+    [...g.entries].sort((x, y) => {
       const tx = parseFecha(x.fecha)?.getTime() ?? 0;
       const ty = parseFecha(y.fecha)?.getTime() ?? 0;
       if (ty !== tx) return ty - tx;
