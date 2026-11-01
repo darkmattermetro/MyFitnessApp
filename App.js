@@ -18,19 +18,19 @@ const DemoBanner = () => {
   return (
     <View
       style={{
-        backgroundColor: demo ? colors.primaryDark : colors.surface,
+        backgroundColor: demo ? colors.primaryDark : colors.primary,
         paddingVertical: 6,
         alignItems: 'center',
       }}
     >
       <Text
         style={{
-          color: demo ? colors.white : colors.textMuted,
+          color: colors.white,
           fontSize: 12,
           fontWeight: '600',
         }}
       >
-        {demo ? '● DEMO MODE — local data' : '● Production mode'}
+        {demo ? '● Offline — local data' : '● Online'}
       </Text>
     </View>
   );
