@@ -50,7 +50,11 @@ export default function RegistrarComidaScreen() {
   };
 
   const describirImagen = async (base64, mimeType) => {
-    if (!base64 || !mimeType) return;
+    if (!base64) {
+      setError('No image data received. Try selecting the image again.');
+      return;
+    }
+    if (!mimeType) mimeType = 'image/jpeg';
     setDescribiendo(true);
     setError(null);
     try {
@@ -81,6 +85,10 @@ export default function RegistrarComidaScreen() {
     if (!res.canceled) {
       const asset = res.assets[0];
       setImagen(asset);
+      if (!asset.base64) {
+        setError('Could not read the photo. Try again.');
+        return;
+      }
       describirImagen(asset.base64, asset.mimeType || 'image/jpeg');
     }
   };
@@ -101,21 +109,60 @@ export default function RegistrarComidaScreen() {
     if (!res.canceled) {
       const asset = res.assets[0];
       setImagen(asset);
+      if (!asset.base64) {
+        setError('Could not read the image. Try again.');
+        return;
+      }
       describirImagen(asset.base64, asset.mimeType || 'image/jpeg');
     }
   };
 
   const subirWeb = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.6,
-      base64: true,
-    });
-    if (!res.canceled) {
-      const asset = res.assets[0];
-      setImagen(asset);
-      describirImagen(asset.base64, asset.mimeType || 'image/jpeg');
+    setError(null);
+    let res;
+    try {
+      res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.6,
+        base64: true,
+      });
+    } catch (e) {
+      setError(e.message || 'Could not open the file picker.');
+      return;
     }
+    if (res.canceled || !res.assets || res.assets.length === 0) return;
+    const asset = res.assets[0];
+    setImagen(asset);
+
+    // On web, base64 may be missing for large files or certain browsers.
+    // Fall back to reading the File object directly with FileReader.
+    let base64 = asset.base64;
+    if (!base64 && asset.file) {
+      try {
+        base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const result = ev.target?.result;
+            if (typeof result === 'string') {
+              resolve(result.split(',')[1]);
+            } else {
+              reject(new Error('Could not read file'));
+            }
+          };
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(asset.file);
+        });
+      } catch (e) {
+        setError(e.message || 'Could not read the image.');
+        return;
+      }
+    }
+
+    if (!base64) {
+      setError('Could not read the image as base64. Try a smaller image.');
+      return;
+    }
+    describirImagen(base64, asset.mimeType || 'image/jpeg');
   };
 
   const updateItem = (index, field, value) => {
