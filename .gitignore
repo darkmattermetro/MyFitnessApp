@@ -49,3 +49,7 @@ opencode.md
 /ios
 /android
 .vercel
+
+# Vercel CLI pulled env (contains secrets)
+.env.vercel
+.env*.vercel
