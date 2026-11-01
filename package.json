@@ -24,6 +24,7 @@
     "react-native-web": "^0.21.2"
   },
   "scripts": {
+    "db:migrate": "node scripts/run-migration.js",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",

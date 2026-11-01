@@ -39,7 +39,7 @@ set search_path = public
 as $$
 begin
   insert into public.users (id, objetivo_kcal, gemini_api_key)
-  values (new.id, 2000, '')
+  values (new.id::text, 2000, '')
   on conflict (id) do nothing;
 
   if not exists (
