@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import ToastProvider from './src/components/Toast';
 import { colors, font, radius, spacing } from './src/theme/colors';
 import { getSession, onAuthStateChange, isDemoMode } from './src/services/auth';
+import { supabase } from './src/services/supabaseClient';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -71,9 +72,23 @@ export default function App() {
     const sub = onAuthStateChange((s) => {
       if (activo) setSession(s);
     });
+
+    // Keep the session alive across app backgrounding / tab switching.
+    // Supabase refreshes the access token automatically; on native the timer
+    // is paused while backgrounded, so we (re)start it on foreground.
+    let appStateSub = null;
+    if (!isDemoMode()) {
+      supabase.auth.startAutoRefresh();
+      appStateSub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') supabase.auth.startAutoRefresh();
+        else supabase.auth.stopAutoRefresh();
+      });
+    }
+
     return () => {
       activo = false;
       sub.data?.subscription?.unsubscribe?.();
+      appStateSub?.remove?.();
     };
   }, []);
 
