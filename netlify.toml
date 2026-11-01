@@ -1,0 +1,13 @@
+[build]
+  command = "npm run export:web"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Static single-page export: serve index.html for unknown paths so a refresh
+# never lands on a 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

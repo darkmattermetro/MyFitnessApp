@@ -36,6 +36,9 @@
     "build:ios": "eas build -p ios --profile production"
   },
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "sharp": "^0.35.3"
   }

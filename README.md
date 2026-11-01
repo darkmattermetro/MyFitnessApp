@@ -95,6 +95,8 @@ On Vercel:
 2. Use `npm run export:web` as the build command and `dist/` as the output directory.
 3. Add your domain URL to the Auth redirect allow-list in Supabase.
 
+Both platforms are pre-configured in this repo: `vercel.json` and `netlify.toml` already set the build command, the `dist/` output and Node 20. Import the repository and deploy; add the Supabase variables only if you want cloud accounts instead of demo mode.
+
 ## Demo mode
 
 With no database or Supabase setup, all data lives in the browser (localStorage) and sample data is created on first launch (meals, weights, preferences and workouts).
