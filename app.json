@@ -15,7 +15,9 @@
     "android": {
       "package": "com.tucas.fit",
       "versionCode": 1,
-      "permissions": ["ACTIVITY_RECOGNITION"],
+      "permissions": [
+        "ACTIVITY_RECOGNITION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#044134",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -49,7 +51,8 @@
         {
           "motionPermission": "OpenFit uses your phone's motion sensor to count your steps."
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

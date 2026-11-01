@@ -23,6 +23,7 @@ import {
 } from '../components/ui';
 import { useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
+import GoogleFitCard from '../components/GoogleFitCard';
 import { colors, font, spacing, radius } from '../theme/colors';
 import {
   getUser,
@@ -420,6 +421,8 @@ export default function PerfilScreen() {
             </Card>
           </GridItem>
         </Grid>
+
+        <GoogleFitCard />
 
         <Button
           variant="danger"
