@@ -11,7 +11,7 @@ let client = null;
 function getClient() {
   if (!client) {
     if (!isSupabaseConfigured()) {
-      throw new Error('Supabase no configurado. Completá tu .env');
+      throw new Error('Supabase is not configured. Fill in your .env file.');
     }
     client = createClient(config.supabaseUrl, config.supabaseAnonKey, {
       auth: {

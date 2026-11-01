@@ -53,7 +53,7 @@ export default function PesoChart({
   if (!data || data.length === 0) {
     return (
       <View style={[styles.vacio, { height, width }]}>
-        <Text style={styles.vacioText}>Sin datos</Text>
+        <Text style={styles.vacioText}>No data yet</Text>
       </View>
     );
   }

@@ -1,5 +1,5 @@
-// Fachada de la API: elige el backend según el modo.
-// Producción → Supabase. Demo → storage local (AsyncStorage/localStorage).
+// Facade for the API: picks the backend based on the mode.
+// Production → Supabase. Demo → local storage (AsyncStorage/localStorage).
 
 import { isDemoMode } from '../config';
 import * as apiDemo from './apiDemo';
@@ -18,9 +18,15 @@ export const deleteFoodEntry = api.deleteFoodEntry;
 export const createWeightEntry = api.createWeightEntry;
 export const listWeightEntries = api.listWeightEntries;
 export const deleteWeightEntry = api.deleteWeightEntry;
+export const createWorkoutSession = api.createWorkoutSession;
+export const listWorkoutSessions = api.listWorkoutSessions;
+export const deleteWorkoutSession = api.deleteWorkoutSession;
+export const getDailyActivity = api.getDailyActivity;
+export const saveDailyActivity = api.saveDailyActivity;
 export const listUserPreferences = api.listUserPreferences;
 export const createUserPreference = api.createUserPreference;
 export const deleteUserPreference = api.deleteUserPreference;
 export const parseFood = api.parseFood;
 export const describeFoodImage = api.describeFoodImage;
 export const mejorarPreferencia = api.mejorarPreferencia;
+export const coachReply = api.coachReply;

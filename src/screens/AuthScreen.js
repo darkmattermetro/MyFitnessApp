@@ -27,20 +27,20 @@ export default function AuthScreen() {
 
   const validar = () => {
     if (!email.trim() || !password) {
-      return 'Completá email y contraseña.';
+      return 'Fill in your email and password.';
     }
     if (!esLogin) {
       if (password.length < 8) {
-        return 'La contraseña debe tener al menos 8 caracteres.';
+        return 'Password must be at least 8 characters.';
       }
       if (!/[a-zA-Z]/.test(password)) {
-        return 'La contraseña debe incluir al menos una letra.';
+        return 'Password must include at least one letter.';
       }
       if (!confirmar) {
-        return 'Repetí la contraseña para confirmarla.';
+        return 'Repeat your password to confirm it.';
       }
       if (password !== confirmar) {
-        return 'Las contraseñas no coinciden.';
+        return 'Passwords do not match.';
       }
     }
     return null;
@@ -92,12 +92,12 @@ export default function AuthScreen() {
               </View>
             </View>
             <Text style={styles.titulo}>
-              {esLogin ? 'Bienvenido de nuevo' : 'Creá tu cuenta'}
+              {esLogin ? 'Welcome back' : 'Create your account'}
             </Text>
             <Text style={styles.subtitulo}>
               {esLogin
-                ? 'Entrá para ver tus registros en todos tus dispositivos.'
-                : 'Tus datos quedan guardados de forma segura por cuenta.'}
+                ? 'Sign in to see your logs on all your devices.'
+                : 'Your data is stored securely per account.'}
             </Text>
 
             <Card style={styles.card}>
@@ -112,7 +112,7 @@ export default function AuthScreen() {
                 style={{ marginBottom: spacing.md }}
               />
               <PasswordInput
-                placeholder="Contraseña"
+                placeholder="Password"
                 value={password}
                 onChangeText={setPassword}
                 autoCapitalize="none"
@@ -122,10 +122,10 @@ export default function AuthScreen() {
               {esLogin ? null : (
                 <>
                   <Text style={styles.hint}>
-                    Mínimo 8 caracteres y al menos una letra.
+                    At least 8 characters and one letter.
                   </Text>
                   <PasswordInput
-                    placeholder="Confirmar contraseña"
+                    placeholder="Confirm password"
                     value={confirmar}
                     onChangeText={setConfirmar}
                     autoCapitalize="none"
@@ -144,7 +144,7 @@ export default function AuthScreen() {
                 loading={loading}
                 style={{ marginTop: spacing.md }}
               >
-                {esLogin ? 'Entrar' : 'Registrarme'}
+                {esLogin ? 'Sign in' : 'Sign up'}
               </Button>
             </Card>
 
@@ -154,8 +154,8 @@ export default function AuthScreen() {
             >
               <Text style={styles.linkText}>
                 {esLogin
-                  ? '¿No tenés cuenta? Crear cuenta'
-                  : '¿Ya tenés cuenta? Iniciar sesión'}
+                  ? "Don't have an account? Create one"
+                  : 'Already have an account? Sign in'}
               </Text>
             </TouchableOpacity>
           </View>

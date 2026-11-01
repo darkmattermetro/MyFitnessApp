@@ -29,7 +29,7 @@ const DemoBanner = () => {
           fontWeight: '600',
         }}
       >
-        {demo ? '● MODO DEMO — datos locales' : '● Modo producción'}
+        {demo ? '● DEMO MODE — local data' : '● Production mode'}
       </Text>
     </View>
   );
@@ -47,7 +47,7 @@ export default function App() {
       const s = await getSession();
       setSession(s);
     } catch (e) {
-      setError(e.message || 'No se pudo iniciar la app.');
+      setError(e.message || 'The app could not start.');
     } finally {
       setReady(true);
     }
@@ -64,7 +64,7 @@ export default function App() {
       })
       .catch((e) => {
         if (activo) {
-          setError(e.message || 'No se pudo iniciar la app.');
+          setError(e.message || 'The app could not start.');
           setReady(true);
         }
       });
@@ -89,7 +89,7 @@ export default function App() {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, padding: spacing.lg }}>
         <Text style={{ fontSize: font.md, color: colors.text, fontWeight: '700', marginBottom: spacing.xs }}>
-          Algo salió mal
+          Something went wrong
         </Text>
         <Text style={{ fontSize: font.base, color: colors.textMuted, textAlign: 'center', marginBottom: spacing.lg }}>
           {error}
@@ -103,7 +103,7 @@ export default function App() {
             paddingHorizontal: spacing.lg,
           }}
         >
-          <Text style={{ color: colors.white, fontSize: font.base, fontWeight: '700' }}>Reintentar</Text>
+          <Text style={{ color: colors.white, fontSize: font.base, fontWeight: '700' }}>Try again</Text>
         </TouchableOpacity>
       </View>
     );

@@ -1,13 +1,13 @@
 import { ChipGroup } from './ui';
 
-export const OPCIONES_PERIODO = [
-  { value: '7d', label: '7 días' },
-  { value: '30d', label: '30 días' },
-  { value: '90d', label: '90 días' },
-  { value: 'todo', label: 'Todo' },
+export const PERIOD_OPTIONS = [
+  { value: '7d', label: '7 days' },
+  { value: '30d', label: '30 days' },
+  { value: '90d', label: '90 days' },
+  { value: 'todo', label: 'All' },
 ];
 
-export function periodoRango(value) {
+export function periodRange(value) {
   if (!value || value === 'todo') return { desde: null, hasta: null };
   const dias = Number(value.replace('d', '')) || 0;
   const ahora = new Date();
@@ -17,5 +17,5 @@ export function periodoRango(value) {
 }
 
 export default function PeriodFilter({ value, onChange }) {
-  return <ChipGroup options={OPCIONES_PERIODO} value={value} onChange={onChange} />;
+  return <ChipGroup options={PERIOD_OPTIONS} value={value} onChange={onChange} />;
 }

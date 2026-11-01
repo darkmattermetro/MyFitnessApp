@@ -14,8 +14,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { Badge, Button, Card, Container, EmptyState, Field, Input, SectionLabel, Grid, GridItem, useResponsive } from '../components/ui';
-import PeriodFilter, { periodoRango } from '../components/PeriodFilter';
+import { Badge, Button, Card, ChipGroup, Container, EmptyState, Field, Input, SectionLabel, Grid, GridItem, useResponsive } from '../components/ui';
+import PeriodFilter, { periodRange } from '../components/PeriodFilter';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { colors, font, radius, spacing } from '../theme/colors';
@@ -24,6 +24,7 @@ import {
   updateFoodEntry,
   deleteFoodEntry,
 } from '../services/api';
+import { MEAL_LABEL, MEAL_TYPES, mealTypeOf } from '../utils/nutricion';
 
 function parseFecha(iso) {
   const d = new Date(iso);
@@ -32,25 +33,24 @@ function parseFecha(iso) {
 
 function formatFecha(iso) {
   const d = parseFecha(iso);
-  if (!d) return 'Sin fecha';
-  return d.toLocaleDateString('es-CO', {
+  if (!d) return 'No date';
+  return d.toLocaleDateString('en-US', {
     day: 'numeric',
     month: 'long',
-    weekday: undefined,
   });
 }
 
 function formatHora(iso) {
   const d = parseFecha(iso);
   if (!d) return '—';
-  return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
 function agruparPorDia(entries) {
   const grupos = new Map();
   for (const e of entries) {
     const d = parseFecha(e.fecha);
-    const key = d ? d.toDateString() : 'Sin fecha';
+    const key = d ? d.toDateString() : 'No date';
     if (!grupos.has(key)) grupos.set(key, { fecha: d, entries: [] });
     grupos.get(key).entries.push(e);
   }
@@ -74,6 +74,17 @@ function itemsArray(items) {
   return Array.isArray(items) ? items : [];
 }
 
+// Current items use English keys; early demo rows may still use Spanish ones.
+function normalizeItem(item) {
+  const raw = item || {};
+  return {
+    name: raw.name ?? raw.nombre ?? '',
+    amount: raw.amount ?? raw.cantidad ?? '',
+    kcal: raw.kcal ?? '',
+    note: raw.note ?? raw.advertencia ?? '',
+  };
+}
+
 const PAGE = 30;
 
 export default function HistorialScreen() {
@@ -94,12 +105,12 @@ export default function HistorialScreen() {
   const cargar = useCallback(async () => {
     setError(null);
     try {
-      const { desde, hasta } = periodoRango(periodo);
+      const { desde, hasta } = periodRange(periodo);
       const res = await listFoodEntries({ desde, hasta, limit: PAGE, offset: 0 });
       setEntries(res.data);
       setHasMore(res.hasMore);
     } catch (e) {
-      setError(e.message || 'No se pudo cargar el historial.');
+      setError(e.message || 'Could not load your history.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -123,7 +134,7 @@ export default function HistorialScreen() {
   const cargarMas = async () => {
     setCargandoMas(true);
     try {
-      const { desde, hasta } = periodoRango(periodo);
+      const { desde, hasta } = periodRange(periodo);
       const res = await listFoodEntries({
         desde,
         hasta,
@@ -133,7 +144,7 @@ export default function HistorialScreen() {
       setEntries((prev) => [...prev, ...res.data]);
       setHasMore(res.hasMore);
     } catch (e) {
-      toast(e.message || 'No se pudo cargar más registros.', 'error');
+      toast(e.message || 'Could not load more entries.', 'error');
       setCargandoMas(false);
     }
   };
@@ -147,8 +158,9 @@ export default function HistorialScreen() {
     setEditando({
       id: e.id,
       fecha: e.fecha,
+      meal_type: mealTypeOf(e),
       texto_original: e.texto_original || '',
-      items: itemsArray(e.items).map((it) => ({ ...it })),
+      items: itemsArray(e.items).map((it) => normalizeItem(it)),
     });
   };
 
@@ -176,7 +188,7 @@ export default function HistorialScreen() {
   const agregarItem = () => {
     setEditando((prev) => ({
       ...prev,
-      items: [...prev.items, { nombre: '', cantidad: '', kcal: '', advertencia: '' }],
+      items: [...prev.items, { name: '', amount: '', kcal: '', note: '' }],
     }));
   };
 
@@ -188,11 +200,11 @@ export default function HistorialScreen() {
   const guardar = async () => {
     if (!editando) return;
     if (!editando.texto_original.trim()) {
-      toast('Escribí la descripción de la comida.', 'info');
+      toast('Add a description for this meal.', 'info');
       return;
     }
     if (editando.items.length === 0) {
-      toast('Agregá al menos un ítem.', 'info');
+      toast('Add at least one item.', 'info');
       return;
     }
     setGuardando(true);
@@ -200,19 +212,23 @@ export default function HistorialScreen() {
       await updateFoodEntry(editando.id, {
         texto: editando.texto_original.trim(),
         items: editando.items.map((it) => ({
-          ...it,
-          nombre: (it.nombre || '').trim(),
-          cantidad: String(it.cantidad ?? ''),
+          name: (it.name || '').trim(),
+          amount: String(it.amount ?? ''),
           kcal: Number(it.kcal) || 0,
+          protein: Number(it.protein) || 0,
+          fat: Number(it.fat) || 0,
+          carbs: Number(it.carbs) || 0,
+          note: String(it.note ?? ''),
         })),
         totalKcal: totalEdit,
         fecha: new Date(editando.fecha),
+        mealType: editando.meal_type,
       });
       setEditando(null);
       await cargar();
-      toast('Cambios guardados.', 'success');
+      toast('Changes saved.', 'success');
     } catch (e) {
-      toast(e.message || 'No se pudo guardar los cambios.', 'error');
+      toast(e.message || 'Could not save the changes.', 'error');
     } finally {
       setGuardando(false);
     }
@@ -229,8 +245,9 @@ export default function HistorialScreen() {
       setEliminando(null);
       setEditando(null);
       await cargar();
+      toast('Meal deleted.', 'success');
     } catch (e) {
-      toast(e.message || 'No se pudo eliminar.', 'error');
+      toast(e.message || 'Could not delete the meal.', 'error');
       setEliminando(null);
     } finally {
       setGuardando(false);
@@ -263,7 +280,7 @@ export default function HistorialScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <Container>
-          <Text style={styles.title}>Historial</Text>
+          <Text style={styles.title}>History</Text>
           <PeriodFilter value={periodo} onChange={cambiarPeriodo} />
 
           {cargando ? (
@@ -272,16 +289,16 @@ export default function HistorialScreen() {
 
           {entries.length > 0 ? (
             <Text style={styles.contador}>
-              Mostrando {entries.length} registro{entries.length === 1 ? '' : 's'}
-              {periodo !== 'todo' ? ' en el período seleccionado' : ''}
+              Showing {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+              {periodo !== 'todo' ? ' in the selected period' : ''}
             </Text>
           ) : null}
 
           {entries.length === 0 ? (
             <EmptyState
               icon="restaurant-outline"
-              title="No hay comidas en este período"
-              hint="Registrá algo en la pestaña Comida o cambiá el filtro de fecha."
+              title="No meals in this period"
+              hint="Log something in the Food tab or change the date filter."
             />
           ) : isDesktop ? (
             <Grid cols={2}>
@@ -300,15 +317,21 @@ export default function HistorialScreen() {
                       <Card key={e.id} style={styles.card}>
                         <View style={styles.cardHeader}>
                           <Text style={styles.cardTitulo}>{e.texto_original}</Text>
-                          <Text style={styles.cardHora}>{formatHora(e.fecha)}</Text>
+                          <View style={styles.cardRight}>
+                            <Badge tone="muted">{MEAL_LABEL[mealTypeOf(e)]}</Badge>
+                            <Text style={styles.cardHora}>{formatHora(e.fecha)}</Text>
+                          </View>
                         </View>
                         {itemsArray(e.items).length > 0 ? (
                           <View style={styles.items}>
-                            {itemsArray(e.items).map((it, i) => (
-                              <Text key={i} style={styles.itemTexto}>
-                                • {it.nombre} ({it.cantidad}) — {Math.round(it.kcal)} kcal
-                              </Text>
-                            ))}
+                            {itemsArray(e.items).map((it, i) => {
+                              const item = normalizeItem(it);
+                              return (
+                                <Text key={i} style={styles.itemTexto}>
+                                  • {item.name} ({item.amount}) — {Math.round(Number(item.kcal) || 0)} kcal
+                                </Text>
+                              );
+                            })}
                           </View>
                         ) : null}
                         <View style={styles.cardActions}>
@@ -318,7 +341,7 @@ export default function HistorialScreen() {
                             hitSlop={6}
                           >
                             <Ionicons name="create-outline" size={16} color={colors.primary} />
-                            <Text style={styles.actionEditar}>Editar</Text>
+                            <Text style={styles.actionEditar}>Edit</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.actionBtn}
@@ -326,7 +349,7 @@ export default function HistorialScreen() {
                             hitSlop={6}
                           >
                             <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                            <Text style={styles.actionBorrar}>Eliminar</Text>
+                            <Text style={styles.actionBorrar}>Delete</Text>
                           </TouchableOpacity>
                         </View>
                       </Card>
@@ -351,15 +374,21 @@ export default function HistorialScreen() {
                     <Card key={e.id} style={styles.card}>
                       <View style={styles.cardHeader}>
                         <Text style={styles.cardTitulo}>{e.texto_original}</Text>
-                        <Text style={styles.cardHora}>{formatHora(e.fecha)}</Text>
+                        <View style={styles.cardRight}>
+                          <Badge tone="muted">{MEAL_LABEL[mealTypeOf(e)]}</Badge>
+                          <Text style={styles.cardHora}>{formatHora(e.fecha)}</Text>
+                        </View>
                       </View>
                       {itemsArray(e.items).length > 0 ? (
                         <View style={styles.items}>
-                          {itemsArray(e.items).map((it, i) => (
-                            <Text key={i} style={styles.itemTexto}>
-                              • {it.nombre} ({it.cantidad}) — {Math.round(it.kcal)} kcal
-                            </Text>
-                          ))}
+                          {itemsArray(e.items).map((it, i) => {
+                            const item = normalizeItem(it);
+                            return (
+                              <Text key={i} style={styles.itemTexto}>
+                                • {item.name} ({item.amount}) — {Math.round(Number(item.kcal) || 0)} kcal
+                              </Text>
+                            );
+                          })}
                         </View>
                       ) : null}
                       <View style={styles.cardActions}>
@@ -369,7 +398,7 @@ export default function HistorialScreen() {
                           hitSlop={6}
                         >
                           <Ionicons name="create-outline" size={16} color={colors.primary} />
-                          <Text style={styles.actionEditar}>Editar</Text>
+                          <Text style={styles.actionEditar}>Edit</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.actionBtn}
@@ -377,7 +406,7 @@ export default function HistorialScreen() {
                           hitSlop={6}
                         >
                           <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                          <Text style={styles.actionBorrar}>Eliminar</Text>
+                          <Text style={styles.actionBorrar}>Delete</Text>
                         </TouchableOpacity>
                       </View>
                     </Card>
@@ -396,7 +425,7 @@ export default function HistorialScreen() {
               disabled={cargandoMas}
               style={styles.masBtn}
             >
-              Cargar más
+              Load more
             </Button>
           ) : null}
         </Container>
@@ -413,9 +442,9 @@ export default function HistorialScreen() {
         >
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <Container>
-              <Text style={styles.modalTitle}>Editar comida</Text>
+              <Text style={styles.modalTitle}>Edit meal</Text>
 
-              <Field label="Descripción">
+              <Field label="Description">
                 <Input
                   multiline
                   value={editando?.texto_original}
@@ -426,15 +455,23 @@ export default function HistorialScreen() {
                 />
               </Field>
 
-              <SectionLabel>Ítems</SectionLabel>
+              <Field label="Meal">
+                <ChipGroup
+                  options={MEAL_TYPES.map((meal) => ({ value: meal.value, label: meal.label }))}
+                  value={editando?.meal_type ?? 'snack'}
+                  onChange={(v) => setEditando((prev) => ({ ...prev, meal_type: v }))}
+                />
+              </Field>
+
+              <SectionLabel>Items</SectionLabel>
               {editando && (editando.items ?? []).map((item, index) => (
                 <Card key={index} style={styles.editItemCard}>
                   <View style={styles.cardHeader}>
                     <TextInput
                       style={styles.nombreInput}
-                      value={item.nombre}
-                      onChangeText={(v) => updateItem(index, 'nombre', v)}
-                      placeholder="Nombre"
+                      value={item.name}
+                      onChangeText={(v) => updateItem(index, 'name', v)}
+                      placeholder="Name"
                       placeholderTextColor={colors.textMuted}
                     />
                     <TouchableOpacity onPress={() => quitarItem(index)} hitSlop={8}>
@@ -443,13 +480,13 @@ export default function HistorialScreen() {
                   </View>
                   <TextInput
                     style={styles.cantidadInput}
-                    value={String(item.cantidad ?? '')}
-                    onChangeText={(v) => updateItem(index, 'cantidad', v)}
-                    placeholder="Cantidad (ej: 2 tajadas)"
+                    value={String(item.amount ?? '')}
+                    onChangeText={(v) => updateItem(index, 'amount', v)}
+                    placeholder="Amount (e.g. 2 slices)"
                     placeholderTextColor={colors.textMuted}
                   />
                   <View style={styles.kcalRow}>
-                    <Text style={styles.kcalLabel}>Calorías (kcal)</Text>
+                    <Text style={styles.kcalLabel}>Calories (kcal)</Text>
                     <TextInput
                       style={styles.kcalInput}
                       keyboardType="numeric"
@@ -459,8 +496,8 @@ export default function HistorialScreen() {
                       placeholderTextColor={colors.textMuted}
                     />
                   </View>
-                  {item.advertencia ? (
-                    <Text style={styles.advertencia}>{item.advertencia}</Text>
+                  {item.note ? (
+                    <Text style={styles.advertencia}>{item.note}</Text>
                   ) : null}
                 </Card>
               ))}
@@ -471,7 +508,7 @@ export default function HistorialScreen() {
                 onPress={agregarItem}
                 style={styles.addBtn}
               >
-                Agregar ítem
+                Add item
               </Button>
 
               <View style={styles.totalRow}>
@@ -492,14 +529,14 @@ export default function HistorialScreen() {
                     onPress={() => confirmarEliminar(editando.id)}
                     style={styles.modalBtn}
                   >
-                    Eliminar comida
+                    Delete meal
                   </Button>
                   <View style={styles.btnRow}>
                     <Button variant="secondary" onPress={cerrarEdicion} style={styles.flexBtn}>
-                      Cancelar
+                      Cancel
                     </Button>
                     <Button variant="primary" onPress={guardar} icon="checkmark" style={styles.flexBtn}>
-                      Guardar cambios
+                      Save changes
                     </Button>
                   </View>
                 </View>
@@ -511,8 +548,8 @@ export default function HistorialScreen() {
 
       <ConfirmDialog
         visible={eliminando != null}
-        title="Eliminar comida"
-        message="¿Eliminar esta comida del historial? Esta acción no se puede deshacer."
+        title="Delete meal"
+        message="Remove this meal from your history? This cannot be undone."
         loading={guardando}
         onConfirm={ejecutarEliminar}
         onCancel={() => setEliminando(null)}
@@ -540,6 +577,7 @@ const styles = StyleSheet.create({
   diaTitulo: { fontSize: font.md, fontWeight: '800', color: colors.text, textTransform: 'capitalize' },
   card: { marginBottom: spacing.sm, padding: spacing.md },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cardTitulo: { fontSize: font.base, fontWeight: '600', color: colors.text, flex: 1 },
   cardHora: { fontSize: font.sm, color: colors.textMuted, marginLeft: spacing.sm },
   items: { marginTop: spacing.sm },

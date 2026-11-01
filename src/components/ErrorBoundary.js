@@ -19,12 +19,12 @@ export default class ErrorBoundary extends Component {
     return (
       <View style={styles.flex}>
         <View style={styles.card}>
-          <Text style={styles.titulo}>Algo salió mal</Text>
+          <Text style={styles.titulo}>Something went wrong</Text>
           <ScrollView style={styles.msgScroll}>
             <Text style={styles.mensaje}>{String(this.state.error.message || this.state.error)}</Text>
           </ScrollView>
           <TouchableOpacity style={styles.btn} onPress={this.reiniciar}>
-            <Text style={styles.btnText}>Reintentar</Text>
+            <Text style={styles.btnText}>Try again</Text>
           </TouchableOpacity>
         </View>
       </View>

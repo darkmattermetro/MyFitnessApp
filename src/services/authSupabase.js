@@ -1,45 +1,45 @@
-// Auth contra Supabase (producción). Las pantallas no la importan directo:
-// usan la fachada en ./auth, que elige entre este backend y el demo.
+// Auth against Supabase (production). Screens never import this directly:
+// they use the facade in ./auth, which picks between this backend and demo.
 
 import { supabase } from './supabaseClient';
 
-function msgDe(error) {
+function messageFor(error) {
   const m = error?.message?.toLowerCase() || '';
-  if (m.includes('already registered')) return 'Ese email ya está registrado. Iniciá sesión.';
-  if (m.includes('weak_password')) return 'La contraseña debe tener al menos 6 caracteres.';
-  if (m.includes('invalid login credentials')) return 'Email o contraseña incorrectos.';
-  if (m.includes('email not confirmed')) return 'Confirmá tu email antes de ingresar.';
-  if (m.includes('invalid email')) return 'El email no es válido.';
-  if (m.includes('password should be at least')) return 'La contraseña debe tener al menos 6 caracteres.';
-  return error?.message || 'Ocurrió un error. Intentá de nuevo.';
+  if (m.includes('already registered')) return 'That email is already registered. Sign in instead.';
+  if (m.includes('weak_password')) return 'Password must be at least 6 characters.';
+  if (m.includes('invalid login credentials')) return 'Wrong email or password.';
+  if (m.includes('email not confirmed')) return 'Confirm your email before signing in.';
+  if (m.includes('invalid email')) return 'That email is not valid.';
+  if (m.includes('password should be at least')) return 'Password must be at least 6 characters.';
+  return error?.message || 'Something went wrong. Please try again.';
 }
 
 export async function signUp(email, password) {
   const { data, error } = await supabase.auth.signUp({ email, password });
-  if (error) throw new Error(msgDe(error));
+  if (error) throw new Error(messageFor(error));
   return data;
 }
 
 export async function signIn(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw new Error(msgDe(error));
+  if (error) throw new Error(messageFor(error));
   return data;
 }
 
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
-  if (error) throw new Error(msgDe(error));
+  if (error) throw new Error(messageFor(error));
 }
 
 export async function getSession() {
   const { data, error } = await supabase.auth.getSession();
-  if (error) throw new Error(msgDe(error));
+  if (error) throw new Error(messageFor(error));
   return data.session;
 }
 
 export async function getCurrentUser() {
   const { data, error } = await supabase.auth.getUser();
-  if (error) throw new Error(msgDe(error));
+  if (error) throw new Error(messageFor(error));
   return data?.user ?? null;
 }
 

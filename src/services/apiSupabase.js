@@ -1,24 +1,25 @@
-// API contra Supabase (producción). Las pantallas no la importan directo:
-// usan la fachada en ./api, que elige entre este backend y el demo.
+// Supabase API (production). Screens never import this directly: they use the
+// facade in ./api, which picks between this backend and the demo one.
 
 import { supabase } from './supabaseClient';
 import { config } from '../config';
 import { getCurrentUserId } from './auth';
-import { parseFoodConKey, mejorarPreferenciaConKey, describirImagenConKey } from './gemini';
+import { parseFoodConKey, mejorarPreferenciaConKey, describirImagenConKey, coachReplyConKey } from './gemini';
+import { guessMealType } from '../utils/nutricion';
 
 function assertConfigured() {
   if (!config.supabaseUrl || config.supabaseUrl.startsWith('PEGA')) {
-    throw new Error('Supabase no configurado. Completa tu .env');
+    throw new Error('Supabase is not configured. Fill in your .env file.');
   }
 }
 
 async function requireUserId() {
   const uid = await getCurrentUserId();
-  if (!uid) throw new Error('Necesitás iniciar sesión.');
+  if (!uid) throw new Error('You need to sign in first.');
   return uid;
 }
 
-// ---- Usuario / perfil ----
+// ---- User / profile ----
 export async function getUser() {
   assertConfigured();
   const uid = await requireUserId();
@@ -28,18 +29,20 @@ export async function getUser() {
     .eq('id', uid)
     .maybeSingle();
   if (error) throw error;
-  return (
-    data ?? {
-      id: uid,
-      objetivo_kcal: 2000,
-      meta_peso_kg: null,
-      gemini_api_key: '',
-      altura_cm: null,
-      sexo: '',
-      edad: null,
-      nivel_actividad: 1.2,
-    }
-  );
+  return {
+    id: uid,
+    objetivo_kcal: 2000,
+    meta_peso_kg: null,
+    gemini_api_key: '',
+    altura_cm: null,
+    sexo: '',
+    edad: null,
+    nivel_actividad: 1.2,
+    step_goal: 8000,
+    water_goal: 8,
+    goal_type: 'maintain',
+    ...(data ?? {}),
+  };
 }
 
 export async function updateUser({
@@ -50,6 +53,9 @@ export async function updateUser({
   sexo,
   edad,
   nivelActividad,
+  stepGoal,
+  waterGoal,
+  goalType,
 }) {
   assertConfigured();
   const uid = await requireUserId();
@@ -64,6 +70,9 @@ export async function updateUser({
       sexo: sexo ?? '',
       edad: edad ?? null,
       nivel_actividad: nivelActividad ?? 1.2,
+      step_goal: stepGoal ?? 8000,
+      water_goal: waterGoal ?? 8,
+      goal_type: goalType ?? 'maintain',
     })
     .select()
     .single();
@@ -71,8 +80,8 @@ export async function updateUser({
   return data;
 }
 
-// ---- Comidas ----
-export async function createFoodEntry({ texto, items, totalKcal, fecha }) {
+// ---- Meals ----
+export async function createFoodEntry({ texto, items, totalKcal, fecha, mealType }) {
   assertConfigured();
   const uid = await requireUserId();
   const { data, error } = await supabase
@@ -80,6 +89,7 @@ export async function createFoodEntry({ texto, items, totalKcal, fecha }) {
     .insert({
       user_id: uid,
       fecha: fecha.toISOString(),
+      meal_type: mealType || guessMealType(fecha),
       texto_original: texto,
       items,
       total_kcal: totalKcal,
@@ -132,12 +142,13 @@ function parseItems(items) {
   return [];
 }
 
-export async function updateFoodEntry(id, { texto, items, totalKcal, fecha }) {
+export async function updateFoodEntry(id, { texto, items, totalKcal, fecha, mealType }) {
   assertConfigured();
   const { data, error } = await supabase
     .from('food_entries')
     .update({
       fecha: fecha.toISOString(),
+      meal_type: mealType || guessMealType(fecha),
       texto_original: texto,
       items,
       total_kcal: totalKcal,
@@ -158,7 +169,7 @@ export async function deleteFoodEntry(id) {
   if (error) throw error;
 }
 
-// ---- Pesos ----
+// ---- Weight ----
 export async function createWeightEntry({ pesoKg, measuredAt }) {
   assertConfigured();
   const uid = await requireUserId();
@@ -210,7 +221,119 @@ export async function deleteWeightEntry(id) {
   if (error) throw error;
 }
 
-// ---- Preferencias del usuario para la IA ----
+// ---- Workouts ----
+export async function createWorkoutSession({
+  name,
+  startedAt,
+  endedAt,
+  durationMin,
+  notes,
+  exercises,
+  totalVolumeKg,
+  totalSets,
+}) {
+  assertConfigured();
+  const uid = await requireUserId();
+  const { data, error } = await supabase
+    .from('workout_sessions')
+    .insert({
+      user_id: uid,
+      name,
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt ? endedAt.toISOString() : null,
+      duration_min: durationMin ?? null,
+      notes: notes ?? '',
+      exercises,
+      total_volume_kg: totalVolumeKg ?? 0,
+      total_sets: totalSets ?? 0,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function listWorkoutSessions({ desde, hasta, limit, offset } = {}) {
+  assertConfigured();
+  const uid = await requireUserId();
+  let query = supabase
+    .from('workout_sessions')
+    .select('*')
+    .eq('user_id', uid)
+    .order('started_at', { ascending: false });
+  if (desde) query = query.gte('started_at', desde);
+  if (hasta) query = query.lte('started_at', hasta);
+  if (limit != null) {
+    const start = offset || 0;
+    const fetchN = limit + 1;
+    query = query.range(start, start + fetchN - 1);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  let rows = (data || []).map((row) => ({
+    ...row,
+    exercises: parseItems(row.exercises),
+  }));
+  if (limit != null) {
+    const hasMore = rows.length > limit;
+    rows = rows.slice(0, limit);
+    return { data: rows, hasMore };
+  }
+  return rows;
+}
+
+export async function deleteWorkoutSession(id) {
+  assertConfigured();
+  const { error } = await supabase
+    .from('workout_sessions')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+}
+
+// ---- Daily activity (steps + water) ----
+export async function getDailyActivity(day) {
+  assertConfigured();
+  const uid = await requireUserId();
+  const { data, error } = await supabase
+    .from('daily_activity')
+    .select('*')
+    .eq('user_id', uid)
+    .eq('day', day)
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    day,
+    steps: Number(data?.steps) || 0,
+    water: Number(data?.water) || 0,
+  };
+}
+
+export async function saveDailyActivity({ day, steps, water }) {
+  assertConfigured();
+  const uid = await requireUserId();
+  const clean = {
+    steps: Math.max(0, Math.round(Number(steps) || 0)),
+    water: Math.max(0, Math.round(Number(water) || 0)),
+  };
+  const { data, error } = await supabase
+    .from('daily_activity')
+    .upsert(
+      {
+        user_id: uid,
+        day,
+        ...clean,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,day' },
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// ---- User preferences for the AI ----
 export async function listUserPreferences() {
   assertConfigured();
   const uid = await requireUserId();
@@ -244,7 +367,7 @@ export async function deleteUserPreference(id) {
   if (error) throw error;
 }
 
-// ---- IA ----
+// ---- AI ----
 export async function parseFood(texto) {
   assertConfigured();
   const user = await getUser();
@@ -263,4 +386,10 @@ export async function mejorarPreferencia(texto) {
   assertConfigured();
   const user = await getUser();
   return mejorarPreferenciaConKey(user.gemini_api_key, texto);
+}
+
+export async function coachReply(context, messages) {
+  assertConfigured();
+  const user = await getUser();
+  return coachReplyConKey(user.gemini_api_key, context, messages);
 }

@@ -1,103 +1,112 @@
 # OpenFit
 
-App de nutrición para registrar comidas y peso. Disponible para Android, iOS y web con un solo código base (React Native + Expo).
+A personal fitness app for tracking meals, weight and gym workouts. One codebase for Android, iOS and web (React Native + Expo).
 
-## Funcionalidades
+## Features
 
-- **Registro de comidas por IA**: escribís lo que comiste en lenguaje cotidiano ("dos huevos revueltos y café con leche") y la IA lo convierte en datos nutricionales (kcal, proteínas, grasas, carbohidratos) antes de guardarlo.
-- **Dashboard**: calorías del día vs. objetivo y último peso registrado.
-- **Historial**: comidas agrupadas por día.
-- **Peso**: registro con fecha y hora + gráfica de evolución.
-- **Perfil**: objetivo calórico, meta de peso, datos personales y API key de Gemini (modelo BYOK: cada usuario usa su propia clave).
+- **AI meal logging**: describe what you ate in everyday language ("two scrambled eggs and a coffee with milk") or upload a photo, and the AI turns it into nutritional data (kcal, protein, fat, carbs) before you save it.
+- **Today dashboard**: calories and macros for the day vs. your goals, this week's training summary, and your latest weight.
+- **Meal history**: meals grouped by day, with editing and deletion.
+- **Workout logging**: start an empty session or a template (push, pull, legs, upper, full body, home). Log weight and reps per set, use the rest timer, add custom exercises, finish or discard a session, and review past workouts.
+- **Personal records**: your heaviest set for each exercise, plus volume, sets and minutes per week.
+- **Weight**: entries with date and time plus a trend chart.
+- **Profile**: calorie goal, weight goal, personal data, BMI/calorie calculator and your own Gemini API key (BYOK).
+
+Smartwatch connectivity is not supported: there is no watch sync, and no data is imported from wearables.
 
 ## Stack
 
-- **Frontend**: React Native con Expo SDK 54, react-native-web (web), React Navigation.
-- **Backend**: Supabase (Auth + PostgreSQL con Row Level Security).
-- **IA**: Gemini API, llamada directo desde la app con la API key del usuario.
+- **Frontend**: React Native with Expo SDK 54, react-native-web (web), React Navigation.
+- **Backend**: Supabase (Auth + PostgreSQL with Row Level Security).
+- **AI**: Gemini API, called directly from the app with the user's own API key.
 
-## Requisitos
+## Requirements
 
 - Node.js 18+
-- Cuenta en [Supabase](https://supabase.com)
-- Expo Go en tu teléfono (opcional, para desarrollo en dispositivo)
+- A [Supabase](https://supabase.com) account (for cloud mode)
+- Expo Go on your phone (optional, for development on a device)
 
-## Configuración
+## Setup
 
-1. Cloná el repo e instalá dependencias:
+1. Install dependencies:
 
    ```bash
    npm install
    ```
 
-2. Creá tu archivo `.env` a partir de la plantilla:
+2. Create your `.env` file from the template:
 
    ```bash
    copy .env.example .env
    ```
 
-   Completá los valores con los de tu proyecto de Supabase (Project Settings > API):
+   Fill in the values from your Supabase project (Project Settings > API):
    - `EXPO_PUBLIC_SUPABASE_URL`
    - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
 
-3. Aplicá las migraciones de la base de datos (requiere un access token de Supabase):
+   Without these values the app automatically runs in demo mode with local data.
+
+3. Apply the database migrations (requires a Supabase access token):
 
    ```bash
-   setx SUPABASE_ACCESS_TOKEN "sbp_tu_token"
+   setx SUPABASE_ACCESS_TOKEN "sbp_your_token"
    node scripts/run-migration.js
    ```
 
+   Or paste the SQL files from `supabase/migrations/` into the Supabase SQL Editor, in order. `0005_workouts.sql` creates the `workout_sessions` table and is required for workout logging in cloud mode.
+
 ## Scripts
 
-| Comando | Descripción |
+| Command | Description |
 |---|---|
-| `npm start` | Inicia el servidor de desarrollo Expo |
-| `npm run web` | Abre la app en el navegador |
-| `npm run android` | Corre en Android (Expo Go / emulador) |
-| `npm run ios` | Corre en iOS (Expo Go / simulador) |
-| `npm run export:web` | Genera el build estático para web (`dist/`) |
-| `npm run logo` | Regenera los íconos de la app desde `assets/logo2.svg` |
-| `npm run build:apk` | Build de APK de preview con EAS |
-| `npm run build:android` | Build de producción Android con EAS |
-| `npm run build:ios` | Build de producción iOS con EAS |
+| `npm start` | Start the Expo dev server |
+| `npm run web` | Open the app in the browser |
+| `npm run android` | Run on Android (Expo Go / emulator) |
+| `npm run ios` | Run on iOS (Expo Go / simulator) |
+| `npm run export:web` | Build the static web app (`dist/`) |
+| `npm run logo` | Regenerate app icons from `assets/logo2.svg` |
+| `npm run build:apk` | EAS preview APK build |
+| `npm run build:android` | EAS production Android build |
+| `npm run build:ios` | EAS production iOS build |
 
-## Estructura
+## Structure
 
 ```
 src/
-  screens/       Dashboard, RegistrarComida, Historial, Peso, Perfil, Auth
-  components/    Componentes reutilizables (UI, gráfica, diálogos, etc.)
-  services/      Cliente de Supabase, auth, API y almacenamiento
-  theme/         Colores y estilos globales
-  navigation/    Navegación por pestañas
-  utils/         Helpers de nutrición
+  screens/       Dashboard, Food, History, Workout, Weight, Profile, Auth
+  components/    Shared UI, chart, dialogs, exercise picker, etc.
+  services/      Supabase client, auth, API and local storage
+  data/          Exercise catalog and workout templates
+  theme/         Colors and global styles
+  navigation/    Bottom-tab navigation
+  utils/         Nutrition and workout helpers
 supabase/
-  migrations/    SQL de esquema, auth (RLS) y métricas
-scripts/         Utilidades (migraciones, generación de íconos)
+  migrations/    SQL for schema, auth (RLS) and workouts
+scripts/         Utilities (migrations, icon generation)
 ```
 
-## Despliegue web
+## Web deployment
 
-El build web es una app estática generada con `expo export --platform web`, lista para hosting estático (Vercel, Netlify, etc.).
+The web build is a static app generated with `expo export --platform web`, ready for static hosting (Vercel, Netlify, etc.).
 
-En Vercel:
+On Vercel:
 
-1. Configurá `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_ANON_KEY` como variables de entorno.
-2. Usá `npm run export:web` como build command y `dist/` como output directory.
-3. Agregá la URL del dominio a los redirects de Auth en Supabase.
+1. Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` as environment variables.
+2. Use `npm run export:web` as the build command and `dist/` as the output directory.
+3. Add your domain URL to the Auth redirect allow-list in Supabase.
 
-## Modo demo
+## Demo mode
 
-Sin base de datos ni Supabase: todos los datos viven en el navegador (localStorage) y se crean datos de ejemplo en el primer arranque (comidas, pesos y preferencias).
+With no database or Supabase setup, all data lives in the browser (localStorage) and sample data is created on first launch (meals, weights, preferences and workouts).
 
-- Se activa con `EXPO_PUBLIC_DEMO_MODE=true`, o automáticamente si no hay Supabase configurado (ideal para un deploy de prueba en Vercel sin variables).
-- No hay login: entra directo a la app con un usuario demo.
-- La IA de Gemini sigue funcionando: agregá tu API key en la pestaña Perfil.
-- Desde Perfil podés "Reiniciar datos demo" para volver a los datos de ejemplo.
-- Una barra en la parte superior indica si la app corre en modo demo o producción.
+- Enabled with `EXPO_PUBLIC_DEMO_MODE=true`, or automatically when Supabase is not configured (handy for a test deploy without variables).
+- No login: the app goes straight in with a demo user.
+- Gemini AI still works: add your API key in the Profile tab.
+- The Profile tab has a "Reset demo data" action to return to the sample data.
+- A bar at the top shows whether the app is running in demo or production mode.
 
-## Seguridad
+## Security
 
-- Las migraciones activan Row Level Security: cada usuario solo accede a sus propios datos.
-- La `service_role` key de Supabase no se usa ni se guarda en el repo.
-- La API key de Gemini es de cada usuario (BYOK) y se almacena cifrada en su fila de la tabla `users`.
+- Migrations enable Row Level Security: each user can only access their own data.
+- The Supabase `service_role` key is never used or stored in the repo.
+- Each user's Gemini API key is stored in their own `users` row.

@@ -12,10 +12,10 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import PesoChart from '../components/PesoChart';
-import { Button, Card, ChipGroup, Container, EmptyState, Grid, GridItem, useResponsive } from '../components/ui';
-import PeriodFilter, { periodoRango } from '../components/PeriodFilter';
+import { Badge, Button, Card, ChipGroup, Container, EmptyState, Grid, GridItem, useResponsive } from '../components/ui';
+import PeriodFilter, { periodRange } from '../components/PeriodFilter';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { colors, font, radius, spacing } from '../theme/colors';
@@ -25,10 +25,11 @@ import {
   deleteWeightEntry,
   getUser,
 } from '../services/api';
+import { weightProgress } from '../utils/nutricion';
 
 function formatFecha(iso) {
   const d = new Date(iso);
-  return d.toLocaleDateString('es-CO', {
+  return d.toLocaleDateString('en-US', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -37,16 +38,24 @@ function formatFecha(iso) {
 
 function formatHora(iso) {
   const d = new Date(iso);
-  return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatCorto(iso) {
   const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
 const PAGE = 30;
 const MAX_PUNTOS_CHART = 150;
+
+const GOAL_LABEL = {
+  lose: 'Losing weight',
+  gain: 'Gaining weight',
+  maintain: 'Maintaining',
+};
+
+const QUICK_DELTAS = [-0.5, -0.1, 0.1, 0.5];
 
 function decimar(lista, max) {
   if (lista.length <= max) return lista;
@@ -59,14 +68,17 @@ function decimar(lista, max) {
 export default function PesoScreen() {
   const { width } = useWindowDimensions();
   const { isDesktop } = useResponsive();
+  const navigation = useNavigation();
   const [peso, setPeso] = useState('');
   const [entries, setEntries] = useState([]);
+  const [allWeights, setAllWeights] = useState([]);
   const [lista, setLista] = useState([]);
   const [periodo, setPeriodo] = useState('30d');
   const [hasMore, setHasMore] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [cargandoMas, setCargandoMas] = useState(false);
   const [meta, setMeta] = useState(null);
+  const [goalType, setGoalType] = useState('maintain');
   const [modo, setModo] = useState('dia');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -78,18 +90,21 @@ export default function PesoScreen() {
   const cargar = useCallback(async () => {
     setError(null);
     try {
-      const { desde, hasta } = periodoRango(periodo);
-      const [user, pesos, page] = await Promise.all([
+      const { desde, hasta } = periodRange(periodo);
+      const [user, pesos, page, todo] = await Promise.all([
         getUser(),
         listWeightEntries({ desde, hasta }),
         listWeightEntries({ desde, hasta, limit: PAGE, offset: 0, asc: false }),
+        listWeightEntries(),
       ]);
       setEntries(pesos);
       setLista(page.data);
       setHasMore(page.hasMore);
+      setAllWeights(todo);
       setMeta(user.meta_peso_kg != null ? Number(user.meta_peso_kg) : null);
+      setGoalType(user.goal_type ?? 'maintain');
     } catch (e) {
-      setError(e.message || 'No se pudo cargar el peso.');
+      setError(e.message || 'Could not load your weight.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -113,7 +128,7 @@ export default function PesoScreen() {
   const cargarMas = async () => {
     setCargandoMas(true);
     try {
-      const { desde, hasta } = periodoRango(periodo);
+      const { desde, hasta } = periodRange(periodo);
       const page = await listWeightEntries({
         desde,
         hasta,
@@ -124,15 +139,15 @@ export default function PesoScreen() {
       setLista((prev) => [...prev, ...page.data]);
       setHasMore(page.hasMore);
     } catch (e) {
-      toast(e.message || 'No se pudo cargar más registros.', 'error');
+      toast(e.message || 'Could not load more entries.', 'error');
       setCargandoMas(false);
     }
   };
 
   const registrar = async () => {
-    const valor = Number(peso);
+    const valor = Number(String(peso).replace(',', '.'));
     if (!peso || !Number.isFinite(valor) || valor <= 0) {
-      toast('Ingresá un peso válido.', 'info');
+      toast('Enter a valid weight.', 'info');
       return;
     }
     setSaving(true);
@@ -140,9 +155,9 @@ export default function PesoScreen() {
       await createWeightEntry({ pesoKg: valor, measuredAt: new Date() });
       setPeso('');
       await cargar();
-      toast('Peso registrado.', 'success');
+      toast('Weight logged.', 'success');
     } catch (e) {
-      toast(e.message || 'No se pudo guardar el peso.', 'error');
+      toast(e.message || 'Could not save the weight.', 'error');
     } finally {
       setSaving(false);
     }
@@ -157,8 +172,9 @@ export default function PesoScreen() {
       await deleteWeightEntry(id);
       setEliminando(null);
       await cargar();
+      toast('Entry deleted.', 'success');
     } catch (e) {
-      toast(e.message || 'No se pudo eliminar.', 'error');
+      toast(e.message || 'Could not delete the entry.', 'error');
       setEliminando(null);
     }
   };
@@ -204,7 +220,7 @@ export default function PesoScreen() {
             value: Number(prom.toFixed(2)),
             label: formatCorto(key),
             fechaTexto: listaDia.length > 1
-              ? `${formatFecha(key)} · promedio de ${listaDia.length} registros`
+              ? `${formatFecha(key)} · average of ${listaDia.length} entries`
               : `${formatFecha(key)} · ${formatHora(listaDia[0].measured_at)}`,
           };
         }),
@@ -221,8 +237,8 @@ export default function PesoScreen() {
     <Card>
       <ChipGroup
         options={[
-          { value: 'dia', label: 'Promedio por día' },
-          { value: 'todos', label: 'Todos los registros' },
+          { value: 'dia', label: 'Daily average' },
+          { value: 'todos', label: 'Every entry' },
         ]}
         value={modo}
         onChange={setModo}
@@ -237,8 +253,81 @@ export default function PesoScreen() {
         />
       </View>
       {meta != null ? (
-        <Text style={styles.metaTexto}>Línea punteada: meta {meta} kg</Text>
+        <Text style={styles.metaTexto}>Dashed line: goal {meta} kg</Text>
       ) : null}
+    </Card>
+  );
+
+  const firstWeight = allWeights.length > 0 ? allWeights[0] : null;
+  const currentWeight = allWeights.length > 0 ? allWeights[allWeights.length - 1] : null;
+  const progress = weightProgress({
+    start: firstWeight?.peso_kg,
+    current: currentWeight?.peso_kg,
+    goal: meta,
+    goalType,
+  });
+  const quickBase = currentWeight ? Number(currentWeight.peso_kg) : null;
+
+  const transformCard = (
+    <Card style={styles.transformCard}>
+      <View style={styles.cardHeaderRow}>
+        <Text style={styles.cardTitle}>Transformation</Text>
+        <Badge tone={progress?.reached ? 'primary' : 'muted'}>
+          {GOAL_LABEL[goalType] ?? GOAL_LABEL.maintain}
+        </Badge>
+      </View>
+
+      <View style={styles.statsRow}>
+        <View style={styles.statBlock}>
+          <Text style={styles.statValue}>
+            {firstWeight ? Number(firstWeight.peso_kg) : '—'}
+            <Text style={styles.statUnit}> kg</Text>
+          </Text>
+          <Text style={styles.statLabel}>Start</Text>
+        </View>
+        <View style={styles.statBlock}>
+          <Text style={[styles.statValue, styles.statValueCurrent]}>
+            {currentWeight ? Number(currentWeight.peso_kg) : '—'}
+            <Text style={styles.statUnit}> kg</Text>
+          </Text>
+          <Text style={styles.statLabel}>Current</Text>
+        </View>
+        <View style={styles.statBlock}>
+          <Text style={styles.statValue}>
+            {meta != null ? meta : '—'}
+            <Text style={styles.statUnit}> kg</Text>
+          </Text>
+          <Text style={styles.statLabel}>Goal</Text>
+        </View>
+      </View>
+
+      {progress ? (
+        <>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progress.pct * 100}%` }]} />
+          </View>
+          <Text style={styles.progressText}>
+            {progress.reached
+              ? 'Goal reached — keep it steady!'
+              : `${progress.toGo} kg to go · ${Math.round(progress.pct * 100)}% of the way`}
+          </Text>
+        </>
+      ) : (
+        <Text style={styles.transformHint}>
+          Set a goal weight to unlock your progress bar and the kg you still need to go.
+        </Text>
+      )}
+
+      <TouchableOpacity
+        style={styles.goalLink}
+        onPress={() => navigation.navigate('Profile')}
+        hitSlop={6}
+      >
+        <Ionicons name="create-outline" size={14} color={colors.primary} />
+        <Text style={styles.goalLinkText}>
+          {meta != null ? 'Edit goal in Profile' : 'Set a goal in Profile'}
+        </Text>
+      </TouchableOpacity>
     </Card>
   );
 
@@ -255,6 +344,25 @@ export default function PesoScreen() {
         />
         <Text style={styles.unidad}>kg</Text>
       </View>
+      {quickBase != null ? (
+        <View style={styles.quickRow}>
+          <Text style={styles.quickLabel}>Quick fill</Text>
+          {QUICK_DELTAS.map((delta) => {
+            const value = Math.round((quickBase + delta) * 10) / 10;
+            return (
+              <TouchableOpacity
+                key={delta}
+                style={styles.quickChip}
+                onPress={() => setPeso(String(value))}
+              >
+                <Text style={styles.quickChipText}>
+                  {delta > 0 ? `+${delta}` : delta}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
       <Button
         variant="primary"
         icon="add"
@@ -262,14 +370,14 @@ export default function PesoScreen() {
         disabled={saving}
         loading={saving}
       >
-        Registrar
+        Log weight
       </Button>
     </Card>
   );
 
   const registrosCard = lista.length > 0 ? (
     <View style={styles.lista}>
-      <Text style={styles.listaTitulo}>Registros</Text>
+      <Text style={styles.listaTitulo}>Entries</Text>
       {lista.map((e) => (
         <Card key={e.id} style={styles.itemCard}>
           <View style={styles.itemInfo}>
@@ -292,7 +400,7 @@ export default function PesoScreen() {
           disabled={cargandoMas}
           style={styles.masBtn}
         >
-          Cargar más
+          Load more
         </Button>
       ) : null}
     </View>
@@ -306,7 +414,7 @@ export default function PesoScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
       <Container>
-        <Text style={styles.title}>Registrar peso</Text>
+        <Text style={styles.title}>Weight</Text>
 
         <PeriodFilter value={periodo} onChange={cambiarPeriodo} />
 
@@ -316,19 +424,21 @@ export default function PesoScreen() {
 
         {periodo !== 'todo' && lista.length > 0 ? (
           <Text style={styles.contador}>
-            Mostrando {lista.length} registro{lista.length === 1 ? '' : 's'} en el período seleccionado
+            Showing {lista.length} {lista.length === 1 ? 'entry' : 'entries'} in the selected period
           </Text>
         ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        {allWeights.length > 0 ? transformCard : null}
 
         {entries.length === 0 ? (
           <>
             {inputCard}
             <EmptyState
               icon="scale-outline"
-              title="Registrá tu primer peso"
-              hint="Vas a ver tu curva acá en la pestaña Peso."
+              title="Log your first weight"
+              hint="Your trend chart will show up here."
             />
           </>
         ) : isDesktop ? (
@@ -353,8 +463,8 @@ export default function PesoScreen() {
 
       <ConfirmDialog
         visible={eliminando != null}
-        title="Eliminar registro"
-        message="¿Eliminar este registro de peso? Esta acción no se puede deshacer."
+        title="Delete entry"
+        message="Remove this weight entry? This cannot be undone."
         loading={saving}
         onConfirm={ejecutarEliminar}
         onCancel={() => setEliminando(null)}
@@ -394,4 +504,76 @@ const styles = StyleSheet.create({
   itemInfo: { flex: 1 },
   itemPeso: { fontSize: font.md, fontWeight: '700', color: colors.text },
   itemFecha: { fontSize: font.sm, color: colors.textMuted, marginTop: spacing.xs },
+
+  // Transformation card
+  transformCard: { marginBottom: spacing.md },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  cardTitle: {
+    fontSize: font.sm,
+    fontWeight: font.weight.semibold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statsRow: { flexDirection: 'row', alignItems: 'center', marginVertical: spacing.sm },
+  statBlock: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: font.xl, fontWeight: '800', color: colors.text },
+  statValueCurrent: { color: colors.primaryDark },
+  statUnit: { fontSize: font.sm, color: colors.textMuted, fontWeight: font.weight.medium },
+  statLabel: { fontSize: font.xs, color: colors.textMuted, marginTop: 2 },
+  progressTrack: {
+    height: 10,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
+    overflow: 'hidden',
+    marginTop: spacing.sm,
+  },
+  progressFill: { height: 10, borderRadius: radius.pill, backgroundColor: colors.primary },
+  progressText: {
+    fontSize: font.sm,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+  transformHint: {
+    fontSize: font.sm,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    lineHeight: 18,
+  },
+  goalLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+  },
+  goalLinkText: { fontSize: font.sm, fontWeight: '700', color: colors.primary },
+
+  // Quick fill chips
+  quickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  quickLabel: { fontSize: font.xs, color: colors.textMuted, marginRight: spacing.xs },
+  quickChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
+  },
+  quickChipText: { fontSize: font.xs, fontWeight: '700', color: colors.text },
 });

@@ -39,6 +39,10 @@ import {
   NIVELES_ACTIVIDAD,
 } from '../utils/nutricion';
 
+function normalizeSex(value) {
+  return value === 'female' || value === 'mujer' ? 'female' : 'male';
+}
+
 export default function PerfilScreen() {
   const { isDesktop } = useResponsive();
   const [objetivoKcal, setObjetivoKcal] = useState('');
@@ -48,8 +52,11 @@ export default function PerfilScreen() {
   const [pesoActual, setPesoActual] = useState('');
   const [alturaCm, setAlturaCm] = useState('');
   const [edad, setEdad] = useState('');
-  const [sexo, setSexo] = useState('hombre');
+  const [sexo, setSexo] = useState('male');
   const [nivelActividad, setNivelActividad] = useState(1.2);
+  const [stepGoal, setStepGoal] = useState('');
+  const [waterGoal, setWaterGoal] = useState('');
+  const [goalType, setGoalType] = useState('maintain');
   const [loading, setLoading] = useState(true);
   const [estado, setEstado] = useState('idle');
   const [vista, setVista] = useState('perfil');
@@ -72,15 +79,18 @@ export default function PerfilScreen() {
       setApiKey(user.gemini_api_key ?? '');
       setAlturaCm(user.altura_cm != null ? String(user.altura_cm) : '');
       setEdad(user.edad != null ? String(user.edad) : '');
-      setSexo(user.sexo || 'hombre');
+      setSexo(normalizeSex(user.sexo));
       setNivelActividad(
         user.nivel_actividad != null ? Number(user.nivel_actividad) : 1.2,
       );
+      setStepGoal(String(user.step_goal ?? 8000));
+      setWaterGoal(String(user.water_goal ?? 8));
+      setGoalType(user.goal_type ?? 'maintain');
       setPesoActual(
         pesos.length > 0 ? String(pesos[pesos.length - 1].peso_kg) : '',
       );
     } catch (e) {
-      toast(e.message || 'No se pudo cargar el perfil.', 'error');
+      toast(e.message || 'Could not load your profile.', 'error');
     } finally {
       setLoading(false);
       reloadingRef.current = false;
@@ -98,12 +108,12 @@ export default function PerfilScreen() {
     try {
       if (isDemoMode()) {
         await resetDemo();
-        toast('Datos demo reiniciados.', 'success');
+        toast('Demo data reset.', 'success');
         return;
       }
       await signOut();
     } catch (e) {
-      toast(e.message || 'No se pudo cerrar la sesión.', 'error');
+      toast(e.message || 'Could not sign out.', 'error');
     }
   };
 
@@ -117,11 +127,14 @@ export default function PerfilScreen() {
         sexo,
         edad: edad ? Number(edad) : null,
         nivelActividad,
+        stepGoal: Number(stepGoal) || 8000,
+        waterGoal: Number(waterGoal) || 8,
+        goalType,
       });
       setEstado('guardado');
     } catch (e) {
       setEstado('error');
-      toast(e.message || 'No se pudo guardar.', 'error');
+      toast(e.message || 'Could not save.', 'error');
     }
   };
 
@@ -134,7 +147,7 @@ export default function PerfilScreen() {
     }, 800);
     return () => clearTimeout(timerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [objetivoKcal, metaPeso, apiKey, alturaCm, edad, sexo, nivelActividad]);
+  }, [objetivoKcal, metaPeso, apiKey, alturaCm, edad, sexo, nivelActividad, stepGoal, waterGoal, goalType]);
 
   const imc = calcularIMC(pesoActual, alturaCm);
   const clas = clasificarIMC(imc);
@@ -161,54 +174,54 @@ export default function PerfilScreen() {
         <Container>
           <TouchableOpacity style={styles.backBtn} onPress={() => setVista('perfil')}>
             <Ionicons name="arrow-back" size={20} color={colors.primary} />
-            <Text style={styles.backText}>Volver</Text>
+            <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Calculadora</Text>
+          <Text style={styles.title}>Calculator</Text>
 
           <Card style={styles.formCard}>
-            <SectionLabel>Tus datos</SectionLabel>
+            <SectionLabel>Your details</SectionLabel>
             <Field
-              label="Peso actual (kg)"
-              hint="Se usa el último registro de la pestaña Peso. Podés ajustarlo."
+              label="Current weight (kg)"
+              hint="Uses your latest entry from the Weight tab. You can adjust it here."
             >
               <Input
                 value={pesoActual}
                 onChangeText={setPesoActual}
                 keyboardType="decimal-pad"
-                placeholder="Ej: 78.5"
+                placeholder="e.g. 78.5"
               />
             </Field>
 
-            <Field label="Altura (cm)">
+            <Field label="Height (cm)">
               <Input
                 value={alturaCm}
                 onChangeText={setAlturaCm}
                 keyboardType="decimal-pad"
-                placeholder="Ej: 175"
+                placeholder="e.g. 175"
               />
             </Field>
 
-            <Field label="Edad (años)">
+            <Field label="Age (years)">
               <Input
                 value={edad}
                 onChangeText={setEdad}
                 keyboardType="number-pad"
-                placeholder="Ej: 30"
+                placeholder="e.g. 30"
               />
             </Field>
 
-            <Field label="Sexo">
+            <Field label="Sex">
               <ChipGroup
                 options={[
-                  { value: 'hombre', label: 'Hombre' },
-                  { value: 'mujer', label: 'Mujer' },
+                  { value: 'male', label: 'Male' },
+                  { value: 'female', label: 'Female' },
                 ]}
                 value={sexo}
                 onChange={setSexo}
               />
             </Field>
 
-            <Field label="Nivel de actividad">
+            <Field label="Activity level">
               {NIVELES_ACTIVIDAD.map((n) => {
                 const active = nivelActividad === n.value;
                 return (
@@ -236,7 +249,7 @@ export default function PerfilScreen() {
           </Card>
 
           <Card style={styles.formCard}>
-            <SectionLabel>Resultados</SectionLabel>
+            <SectionLabel>Results</SectionLabel>
             <View style={styles.resultRow}>
               <View style={styles.resultBlock}>
                 <Text style={styles.resultValor}>
@@ -248,12 +261,12 @@ export default function PerfilScreen() {
                     { color: clas ? clas.color : colors.textMuted },
                   ]}
                 >
-                  {clas ? clas.categoria : 'IMC'}
+                  {clas ? clas.categoria : 'BMI'}
                 </Text>
                 <Text style={styles.resultSub}>
                   {imc != null
-                    ? `Altura: ${alturaCm} cm`
-                    : 'Cargá peso y altura'}
+                    ? `Height: ${alturaCm} cm`
+                    : 'Add weight and height'}
                 </Text>
               </View>
               <View style={styles.divider} />
@@ -262,12 +275,12 @@ export default function PerfilScreen() {
                   {kcalRec != null ? Math.round(kcalRec) : '—'}
                 </Text>
                 <Text style={[styles.resultCategoria, { color: colors.primary }]}>
-                  kcal / día
+                  kcal / day
                 </Text>
                 <Text style={styles.resultSub}>
                   {bmr != null
-                    ? `Metabolismo: ${Math.round(bmr)} kcal`
-                    : 'Datos incompletos'}
+                    ? `Metabolism: ${Math.round(bmr)} kcal`
+                    : 'Incomplete data'}
                 </Text>
               </View>
             </View>
@@ -279,7 +292,7 @@ export default function PerfilScreen() {
                 onPress={() => setObjetivoKcal(String(Math.round(kcalRec)))}
                 style={styles.applyBtn}
               >
-                Usar {Math.round(kcalRec)} kcal como objetivo
+                Use {Math.round(kcalRec)} kcal as my goal
               </Button>
             ) : null}
           </Card>
@@ -292,13 +305,13 @@ export default function PerfilScreen() {
     <>
       <ScrollView style={styles.flex} contentContainerStyle={styles.content}>
         <Container>
-          <Text style={styles.title}>Perfil</Text>
+          <Text style={styles.title}>Profile</Text>
         {estado === 'guardando' ? (
-          <Text style={styles.estadoGuardando}>Guardando…</Text>
+          <Text style={styles.estadoGuardando}>Saving…</Text>
         ) : estado === 'guardado' ? (
-          <Text style={styles.estadoGuardado}>Todo guardado ✓</Text>
+          <Text style={styles.estadoGuardado}>All changes saved ✓</Text>
         ) : estado === 'error' ? (
-          <Text style={styles.estadoError}>No se pudo guardar. Revisá tu conexión.</Text>
+          <Text style={styles.estadoError}>Could not save. Check your connection.</Text>
         ) : null}
 
         {email ? (
@@ -307,7 +320,7 @@ export default function PerfilScreen() {
               <Ionicons name="person-outline" size={22} color={colors.primary} />
             </View>
             <View style={styles.accountInfo}>
-              <Text style={styles.accountLabel}>Cuenta</Text>
+              <Text style={styles.accountLabel}>Account</Text>
               <Text style={styles.accountEmail}>{email}</Text>
             </View>
           </Card>
@@ -316,15 +329,15 @@ export default function PerfilScreen() {
         <Grid cols={2}>
           <GridItem cols={1}>
             <Card style={styles.formCard}>
-              <SectionLabel>IA</SectionLabel>
+              <SectionLabel>AI</SectionLabel>
               <Field
-                label="API key de Gemini"
-                hint="Tu propia clave de https://aistudio.google.com/apikey. Se usa para interpretar tus comidas."
+                label="Gemini API key"
+                hint="Your own key from https://aistudio.google.com/apikey. It is used to interpret your meals."
               >
                 <Input
                   value={apiKey}
                   onChangeText={setApiKey}
-                  placeholder="Tu API key"
+                  placeholder="Your API key"
                   autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry
@@ -335,7 +348,7 @@ export default function PerfilScreen() {
 
           <GridItem cols={1}>
             <Card style={styles.formCard}>
-              <SectionLabel>Salud</SectionLabel>
+              <SectionLabel>Health</SectionLabel>
               <TouchableOpacity
                 style={styles.saludRow}
                 onPress={() => setVista('calculadora')}
@@ -344,9 +357,9 @@ export default function PerfilScreen() {
                   <Ionicons name="fitness" size={20} color={colors.primary} />
                 </View>
                 <View style={styles.saludInfo}>
-                  <Text style={styles.saludLabel}>Calcular IMC y calorías</Text>
+                  <Text style={styles.saludLabel}>Calculate BMI and calories</Text>
                   <Text style={styles.saludHint}>
-                    Calculá tu IMC y cuántas kcal deberías consumir por día.
+                    Estimate your BMI and how many kcal you should eat per day.
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
@@ -356,8 +369,8 @@ export default function PerfilScreen() {
 
           <GridItem cols={1}>
             <Card style={styles.formCard}>
-              <SectionLabel>Objetivos</SectionLabel>
-              <Field label="Objetivo calórico diario (kcal)">
+              <SectionLabel>Goals</SectionLabel>
+              <Field label="Daily calorie goal (kcal)">
                 <Input
                   value={objetivoKcal}
                   onChangeText={setObjetivoKcal}
@@ -366,12 +379,42 @@ export default function PerfilScreen() {
                 />
               </Field>
 
-              <Field label="Meta de peso (kg)">
+              <Field label="Weight goal (kg)">
                 <Input
                   value={metaPeso}
                   onChangeText={setMetaPeso}
                   keyboardType="decimal-pad"
-                  placeholder="Opcional"
+                  placeholder="Optional"
+                />
+              </Field>
+
+              <Field label="Goal type">
+                <ChipGroup
+                  options={[
+                    { value: 'lose', label: 'Lose' },
+                    { value: 'maintain', label: 'Maintain' },
+                    { value: 'gain', label: 'Gain' },
+                  ]}
+                  value={goalType}
+                  onChange={setGoalType}
+                />
+              </Field>
+
+              <Field label="Daily step goal">
+                <Input
+                  value={stepGoal}
+                  onChangeText={setStepGoal}
+                  keyboardType="number-pad"
+                  placeholder="8000"
+                />
+              </Field>
+
+              <Field label="Daily water goal (glasses)">
+                <Input
+                  value={waterGoal}
+                  onChangeText={setWaterGoal}
+                  keyboardType="number-pad"
+                  placeholder="8"
                 />
               </Field>
             </Card>
@@ -383,20 +426,20 @@ export default function PerfilScreen() {
           icon={isDemoMode() ? 'refresh-outline' : 'log-out-outline'}
           onPress={() => setConfirmarSalida(true)}
         >
-          {isDemoMode() ? 'Reiniciar datos demo' : 'Cerrar sesión'}
+          {isDemoMode() ? 'Reset demo data' : 'Sign out'}
         </Button>
       </Container>
     </ScrollView>
 
     <ConfirmDialog
       visible={confirmarSalida}
-      title={isDemoMode() ? 'Reiniciar datos demo' : 'Cerrar sesión'}
+      title={isDemoMode() ? 'Reset demo data' : 'Sign out'}
       message={
         isDemoMode()
-          ? '¿Querés borrar todos los datos demo y empezar de nuevo?'
-          : '¿Querés cerrar tu sesión en este dispositivo?'
+          ? 'Delete all demo data and start over?'
+          : 'Sign out of this device?'
       }
-      confirmText={isDemoMode() ? 'Reiniciar' : 'Cerrar sesión'}
+      confirmText={isDemoMode() ? 'Reset' : 'Sign out'}
       icon={isDemoMode() ? 'refresh-outline' : 'log-out-outline'}
       onConfirm={cerrarSesion}
       onCancel={() => setConfirmarSalida(false)}

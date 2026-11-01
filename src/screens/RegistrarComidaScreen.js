@@ -13,11 +13,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Card, Container, Input, SectionLabel, Grid, GridItem, useResponsive } from '../components/ui';
+import { Button, Card, ChipGroup, Container, SectionLabel, Grid, GridItem, useResponsive } from '../components/ui';
 import PreferenciasSection from '../components/PreferenciasSection';
 import { useToast } from '../components/Toast';
 import { colors, font, radius, spacing } from '../theme/colors';
 import { parseFood, createFoodEntry, describeFoodImage } from '../services/api';
+import { MEAL_TYPES, guessMealType } from '../utils/nutricion';
 
 export default function RegistrarComidaScreen() {
   const { isDesktop } = useResponsive();
@@ -28,6 +29,7 @@ export default function RegistrarComidaScreen() {
   const [error, setError] = useState(null);
   const [imagen, setImagen] = useState(null);
   const [describiendo, setDescribiendo] = useState(false);
+  const [mealType, setMealType] = useState(() => guessMealType(new Date()));
   const { showToast: toast } = useToast();
 
   const interpretar = async () => {
@@ -37,11 +39,11 @@ export default function RegistrarComidaScreen() {
     try {
       const res = await parseFood(texto);
       if (!res || !res.items || res.items.length === 0) {
-        throw new Error('La IA no encontró alimentos en tu texto.');
+        throw new Error('The AI could not find any food in your text.');
       }
       setItems(res.items);
     } catch (e) {
-      setError(e.message || 'No se pudo interpretar la comida.');
+      setError(e.message || 'Could not interpret the meal.');
     } finally {
       setLoading(false);
     }
@@ -53,11 +55,11 @@ export default function RegistrarComidaScreen() {
     setError(null);
     try {
       const descripcion = await describeFoodImage(base64, mimeType);
-      if (!descripcion) throw new Error('No se pudo describir la imagen.');
+      if (!descripcion) throw new Error('Could not describe the image.');
       setTexto(descripcion);
       setItems(null);
     } catch (e) {
-      setError(e.message || 'No se pudo describir la imagen.');
+      setError(e.message || 'Could not describe the image.');
     } finally {
       setDescribiendo(false);
     }
@@ -66,7 +68,7 @@ export default function RegistrarComidaScreen() {
   const tomarFoto = async () => {
     const permiso = await ImagePicker.requestCameraPermissionsAsync();
     if (!permiso.granted) {
-      toast('Necesitás permitir la cámara para sacar fotos.', 'error');
+      toast('You need to allow camera access to take photos.', 'error');
       return;
     }
     const res = await ImagePicker.launchCameraAsync({
@@ -86,7 +88,7 @@ export default function RegistrarComidaScreen() {
   const elegirGaleria = async () => {
     const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permiso.granted) {
-      toast('Necesitás permitir el acceso a tus fotos.', 'error');
+      toast('You need to allow access to your photos.', 'error');
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -132,16 +134,26 @@ export default function RegistrarComidaScreen() {
     try {
       await createFoodEntry({
         texto,
-        items,
+        items: items.map((it) => ({
+          name: String(it.name ?? '').trim(),
+          amount: String(it.amount ?? ''),
+          kcal: Number(it.kcal) || 0,
+          protein: Number(it.protein) || 0,
+          fat: Number(it.fat) || 0,
+          carbs: Number(it.carbs) || 0,
+          note: String(it.note ?? ''),
+        })),
         totalKcal: total,
         fecha: new Date(),
+        mealType,
       });
-      toast('Comida registrada.', 'success');
+      toast('Meal logged.', 'success');
       setItems(null);
       setTexto('');
       setImagen(null);
+      setMealType(guessMealType(new Date()));
     } catch (e) {
-      toast(e.message || 'No se pudo guardar.', 'error');
+      toast(e.message || 'Could not save.', 'error');
     } finally {
       setSaving(false);
     }
@@ -153,7 +165,7 @@ export default function RegistrarComidaScreen() {
         <TextInput
           style={styles.input}
           multiline
-          placeholder="Ej: comí una uva y crispetas sin aceite"
+          placeholder="e.g. I had a grape and popcorn without oil"
           value={texto}
           onChangeText={setTexto}
           placeholderTextColor={colors.textMuted}
@@ -186,7 +198,7 @@ export default function RegistrarComidaScreen() {
             <Ionicons name="close" size={16} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.previewHint}>
-            {describiendo ? 'Describiendo la imagen…' : 'Podés corregir la descripción abajo.'}
+            {describiendo ? 'Describing the image…' : 'You can edit the description below.'}
           </Text>
         </View>
       ) : null}
@@ -199,17 +211,17 @@ export default function RegistrarComidaScreen() {
         {Platform.OS === 'web' ? (
           <TouchableOpacity style={styles.fotoBtn} onPress={subirWeb} disabled={describiendo}>
             <Ionicons name="image-outline" size={18} color={colors.primary} />
-            <Text style={styles.fotoBtnText}>Subir imagen</Text>
+            <Text style={styles.fotoBtnText}>Upload image</Text>
           </TouchableOpacity>
         ) : (
           <>
             <TouchableOpacity style={styles.fotoBtn} onPress={tomarFoto} disabled={describiendo}>
               <Ionicons name="camera-outline" size={18} color={colors.primary} />
-              <Text style={styles.fotoBtnText}>Foto</Text>
+              <Text style={styles.fotoBtnText}>Photo</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.fotoBtn} onPress={elegirGaleria} disabled={describiendo}>
               <Ionicons name="images-outline" size={18} color={colors.primary} />
-              <Text style={styles.fotoBtnText}>Galería</Text>
+              <Text style={styles.fotoBtnText}>Gallery</Text>
             </TouchableOpacity>
           </>
         )}
@@ -224,10 +236,20 @@ export default function RegistrarComidaScreen() {
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Container>
-          <Text style={styles.title}>¿Qué comiste?</Text>
+          <Text style={styles.title}>What did you eat?</Text>
           <Text style={styles.subtitle}>
-            Describilo con tus palabras o subí una foto. Incluí cantidades y método de preparación.
+            Describe it in your own words or upload a photo. Include amounts and how it was
+            cooked.
           </Text>
+
+          <Card style={styles.mealCard}>
+            <Text style={styles.mealLabel}>Which meal is this?</Text>
+            <ChipGroup
+              options={MEAL_TYPES.map((meal) => ({ value: meal.value, label: meal.label }))}
+              value={mealType}
+              onChange={setMealType}
+            />
+          </Card>
 
           {isDesktop ? (
             <Grid cols={2}>
@@ -248,7 +270,7 @@ export default function RegistrarComidaScreen() {
                     onPress={interpretar}
                     style={styles.bigBtn}
                   >
-                    Interpretar por IA
+                    Interpret with AI
                   </Button>
                 ) : (
                   <Confirmacion
@@ -286,7 +308,7 @@ export default function RegistrarComidaScreen() {
                   onPress={interpretar}
                   style={styles.bigBtn}
                 >
-                  Interpretar por IA
+                  Interpret with AI
                 </Button>
               ) : (
                 <Confirmacion
@@ -314,24 +336,24 @@ export default function RegistrarComidaScreen() {
 function Confirmacion({ items, total, updateItem, removeItem, onEditar, onGuardar, saving }) {
   return (
     <View>
-      <SectionLabel style={{ marginTop: spacing.md }}>Revisá antes de guardar</SectionLabel>
+      <SectionLabel style={{ marginTop: spacing.md }}>Review before saving</SectionLabel>
       {items.map((item, index) => (
-        <Card key={`${item.nombre}-${index}`} style={styles.itemCard}>
+        <Card key={`${item.name}-${index}`} style={styles.itemCard}>
           <View style={styles.cardHeader}>
-            <Text style={styles.nombre}>{item.nombre}</Text>
+            <Text style={styles.nombre}>{item.name}</Text>
             <TouchableOpacity onPress={() => removeItem(index)} hitSlop={8}>
               <Ionicons name="trash-outline" size={18} color={colors.danger} />
             </TouchableOpacity>
           </View>
           <TextInput
             style={styles.cantidadInput}
-            value={item.cantidad}
-            onChangeText={(v) => updateItem(index, 'cantidad', v)}
-            placeholder="Cantidad"
+            value={String(item.amount ?? '')}
+            onChangeText={(v) => updateItem(index, 'amount', v)}
+            placeholder="Amount"
             placeholderTextColor={colors.textMuted}
           />
           <View style={styles.kcalRow}>
-            <Text style={styles.kcalLabel}>Calorías (kcal)</Text>
+            <Text style={styles.kcalLabel}>Calories (kcal)</Text>
             <TextInput
               style={styles.kcalInput}
               keyboardType="numeric"
@@ -341,14 +363,12 @@ function Confirmacion({ items, total, updateItem, removeItem, onEditar, onGuarda
               placeholderTextColor={colors.textMuted}
             />
           </View>
-          {item.advertencia ? (
-            <Text style={styles.advertencia}>• {item.advertencia}</Text>
-          ) : null}
+          {item.note ? <Text style={styles.advertencia}>• {item.note}</Text> : null}
         </Card>
       ))}
 
       <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>Total estimado</Text>
+        <Text style={styles.totalLabel}>Estimated total</Text>
         <View style={styles.totalBadge}>
           <Text style={styles.totalValue}>{Math.round(total)}</Text>
           <Text style={styles.totalUnidad}> kcal</Text>
@@ -357,7 +377,7 @@ function Confirmacion({ items, total, updateItem, removeItem, onEditar, onGuarda
 
       <View style={styles.botones}>
         <Button variant="secondary" onPress={onEditar} disabled={saving} style={styles.flexBtn}>
-          Editar texto
+          Edit text
         </Button>
         <Button
           variant="primary"
@@ -367,7 +387,7 @@ function Confirmacion({ items, total, updateItem, removeItem, onEditar, onGuarda
           icon="checkmark"
           style={styles.flexBtn}
         >
-          Guardar
+          Save
         </Button>
       </View>
     </View>
@@ -379,6 +399,15 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1 },
   title: { fontSize: font.xl, fontWeight: '800', color: colors.text },
   subtitle: { fontSize: font.base, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.md },
+  mealCard: { marginBottom: spacing.md },
+  mealLabel: {
+    fontSize: font.sm,
+    fontWeight: font.weight.semibold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: spacing.sm,
+  },
   inputCard: { marginBottom: spacing.md },
   inputWrap: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: 0 },
   input: {

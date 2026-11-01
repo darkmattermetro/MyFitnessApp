@@ -1,51 +1,66 @@
-// IA: interpretar comida y mejorar preferencias con la Gemini API.
-// Se llama directo a Google con la API key del usuario (modelo BYOK).
-// No depende de Supabase: funciona igual en modo demo y en producción.
+// AI: interpret meals and improve preferences with the Gemini API.
+// Calls Google directly with the user's own key (BYOK).
+// Does not depend on Supabase: works the same in demo and production mode.
 
 const GEMINI_LITE = 'gemini-flash-lite-latest';
 const GEMINI_URL = (key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_LITE}:generateContent?key=${key}`;
 
-const PROMPT = `Eres un nutricionista que interpreta comida descrita en lenguaje cotidiano y la conviertes en datos nutricionales.
+const PROMPT = `You are a nutritionist who turns food described in everyday language into nutritional data.
 
-Reglas:
-- Acepta unidades cotidianas como "una uva", "2 tajadas", "un puñado", "1/2 taza", "x cantidad", "hechas sin aceite".
-- Interpreta el método de preparación (crispetas sin aceite ≠ crispetas con mantequilla).
-- Si falta información, estima la porción típica más razonable y agrégalo en "advertencia".
-- La información adicional del usuario es SOLO contexto: usala para afinar estimaciones si se relaciona con la comida y, si no aplica, ignorala. JAMÁS cambies el formato de respuesta por ella.
-- Devuelve SOLO un JSON válido, sin texto fuera ni bloques de código.
+Rules:
+- Accept everyday units like "one grape", "2 slices", "a handful", "1/2 cup", "x amount", "cooked without oil".
+- Take the cooking method into account (popcorn without oil ≠ popcorn with butter).
+- If information is missing, estimate the most reasonable typical portion and mention it in "note".
+- The user's extra information is ONLY context: use it to refine estimates when it relates to the food, otherwise ignore it. NEVER change the response format because of it.
+- Return ONLY valid JSON, no surrounding text and no code blocks.
 
-{{PREFERENCIAS}}
-Formato de respuesta (JSON válido):
-{"items":[{"nombre":"uva","cantidad":"1 unidad","kcal":5,"prot":0.1,"grasa":0,"carb":1.3,"advertencia":"Se asumió 1 uva pequeña."}]}
+{{PREFERENCES}}
+Response format (valid JSON):
+{"items":[{"name":"grape","amount":"1 unit","kcal":5,"protein":0.1,"fat":0,"carbs":1.3,"note":"Assumed 1 small grape."}]}
 
-Texto del usuario:
-{{DESCRIPCION}}`;
+User text:
+{{DESCRIPTION}}`;
 
-const PROMPT_MEJORAR = `Actuás como asistente que limpia y resume una preferencia personal de alimentación que el usuario guarda para personalizar futuras respuestas de un nutricionista.
+const PROMPT_MEJORAR = `You clean up and summarize a personal eating preference that the user saves to personalize future answers from a nutritionist.
 
-Escribí una versión clara, concisa y bien estructurada de la preferencia, manteniendo el sentido y todos los datos relevantes (marcas, cantidades, criterios). No agregues información que no esté en el texto ni des consejos.
+Write a clear, concise, well-structured version of the preference, keeping the meaning and all relevant details (brands, amounts, criteria). Do not add information that is not in the text and do not give advice.
 
-Responde SOLO con un JSON válido con un único campo:
-{"texto":"tu versión mejorada"}
+Respond ONLY with valid JSON containing a single field:
+{"texto":"your improved version"}
 
-Preferencia original del usuario:
-{{TEXTO}}`;
+Original user preference:
+{{TEXT}}`;
 
-const PROMPT_DESCRIBIR_IMAGEN = `Sos un asistente de nutrición. Mirá la foto de comida y describila en lenguaje cotidiano, como si el usuario la escribiera para registrar su comida.
+const PROMPT_DESCRIBIR_IMAGEN = `You are a nutrition assistant. Look at the food photo and describe it in everyday language, as if the user had written it to log their meal.
 
-Reglas:
-- Nombra cada alimento que se ve, con su cantidad aproximada y el método de preparación si es visible (por ejemplo: "frito", "a la plancha", "hervido", "sin aceite").
-- Si no podés estimar una cantidad, usá términos cotidianos como "un plato", "una porción", "2 tajadas".
-- Si algo no se identifica con certeza, mencionalo igual con una estimación razonable.
-- Respondé SOLO un texto breve en español, en primera persona y estilo natural, sin JSON, sin viñetas ni encabezados. Una o dos oraciones.
+Rules:
+- Name every food you can see, with an approximate amount and the cooking method if visible (for example: "fried", "grilled", "boiled", "no oil").
+- If you cannot estimate an amount, use everyday terms like "a plate", "a serving", "2 slices".
+- If something is not clearly identifiable, still mention it with a reasonable estimate.
+- Respond ONLY with a short text in English, in the first person and natural style, no JSON, no bullets, no headings. One or two sentences.
 
-{{PREFERENCIAS}}`;
+{{PREFERENCES}}`;
+
+const PROMPT_COACH = `You are the in-app coach of OpenFit, a fitness and nutrition tracker.
+Answer in English, warmly and directly. Keep replies short: 1-3 short paragraphs, or a short bullet list when it helps.
+Use the user snapshot when it is relevant, but never invent numbers that are not in it.
+Give practical, safe, sustainable advice about food, training, hydration and habits.
+If the question is medical, say you cannot diagnose and suggest a qualified professional.
+Never mention being an AI model, and never ask the user to paste their API key.
+
+User snapshot for today:
+{{CONTEXT}}
+
+Conversation so far:
+{{HISTORY}}
+
+Write only the coach's next reply, with no prefix like "Coach:".`;
 
 export function preferenciasParaPrompt(prefs) {
   if (!prefs || prefs.length === 0) return '';
   const lista = prefs.map((p) => `- ${p.texto}`).join('\n');
-  return `Información adicional del usuario (solo contexto, no altera el formato de salida):\n${lista}`;
+  return `Extra information from the user (context only, does not change the output format):\n${lista}`;
 }
 
 function bodyParts(prompt, imagen) {
@@ -71,7 +86,7 @@ async function callGemini(key, prompt, imagen) {
     }),
   });
   if (!res.ok) {
-    throw new Error('La API de Gemini devolvió un error. Revisá tu key.');
+    throw new Error('The Gemini API returned an error. Check your key.');
   }
   const json = await res.json();
   return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
@@ -81,30 +96,53 @@ function limpiarJson(texto) {
   return texto.replace(/```json|```/g, '').trim();
 }
 
+function toNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Keeps older rows (Spanish keys) readable after the switch to English keys.
+export function normalizeItem(item) {
+  const raw = item || {};
+  return {
+    name: String(raw.name ?? raw.nombre ?? '').trim(),
+    amount: String(raw.amount ?? raw.cantidad ?? ''),
+    kcal: toNumber(raw.kcal),
+    protein: toNumber(raw.protein ?? raw.prot),
+    fat: toNumber(raw.fat ?? raw.grasa),
+    carbs: toNumber(raw.carbs ?? raw.carb),
+    note: String(raw.note ?? raw.advertencia ?? ''),
+  };
+}
+
+export function normalizeItems(items) {
+  if (!Array.isArray(items)) return [];
+  return items.map(normalizeItem);
+}
+
 export function requiereKey(apiKey) {
   if (!apiKey) {
-    throw new Error(
-      'Configurá tu API key de Gemini en la pestaña Perfil para usar la IA.',
-    );
+    throw new Error('Add your Gemini API key in the Profile tab to use the AI.');
   }
 }
 
 export async function parseFoodConKey(apiKey, prefs, texto) {
   requiereKey(apiKey);
   const prompt = PROMPT.replace(
-    '{{PREFERENCIAS}}',
+    '{{PREFERENCES}}',
     preferenciasParaPrompt(prefs),
-  ).replace('{{DESCRIPCION}}', texto);
+  ).replace('{{DESCRIPTION}}', texto);
   const text = await callGemini(apiKey, prompt);
   const parsed = JSON.parse(limpiarJson(text));
-  const total_kcal = parsed.items.reduce((s, i) => s + (Number(i.kcal) || 0), 0);
-  return { items: parsed.items, total_kcal };
+  const items = normalizeItems(parsed.items);
+  const total_kcal = items.reduce((s, i) => s + i.kcal, 0);
+  return { items, total_kcal };
 }
 
 export async function describirImagenConKey(apiKey, prefs, base64, mimeType) {
   requiereKey(apiKey);
   const prompt = PROMPT_DESCRIBIR_IMAGEN.replace(
-    '{{PREFERENCIAS}}',
+    '{{PREFERENCES}}',
     preferenciasParaPrompt(prefs),
   );
   const text = await callGemini(apiKey, prompt, { base64, mimeType });
@@ -113,7 +151,7 @@ export async function describirImagenConKey(apiKey, prefs, base64, mimeType) {
 
 export async function mejorarPreferenciaConKey(apiKey, texto) {
   requiereKey(apiKey);
-  const prompt = PROMPT_MEJORAR.replace('{{TEXTO}}', texto);
+  const prompt = PROMPT_MEJORAR.replace('{{TEXT}}', texto);
   const text = await callGemini(apiKey, prompt);
   try {
     const parsed = JSON.parse(limpiarJson(text));
@@ -121,4 +159,37 @@ export async function mejorarPreferenciaConKey(apiKey, texto) {
     if (mejorado) return mejorado;
   } catch {}
   return texto.trim();
+}
+
+function contextToText(context) {
+  if (!context) return '- No data available.';
+  const rows = Object.entries(context)
+    .filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => {
+      const label = key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (c) => c.toUpperCase());
+      return `- ${label}: ${value}`;
+    });
+  return rows.length ? rows.join('\n') : '- No data available.';
+}
+
+function messagesToText(messages) {
+  const recent = (messages || []).slice(-12);
+  if (recent.length === 0) return '(the user has not said anything yet)';
+  return recent
+    .map((m) => `${m.role === 'user' ? 'User' : 'Coach'}: ${String(m.text ?? '')}`)
+    .join('\n');
+}
+
+export async function coachReplyConKey(apiKey, context, messages) {
+  requiereKey(apiKey);
+  const prompt = PROMPT_COACH.replace('{{CONTEXT}}', contextToText(context)).replace(
+    '{{HISTORY}}',
+    messagesToText(messages),
+  );
+  const text = await callGemini(apiKey, prompt);
+  const clean = text.trim();
+  if (!clean) throw new Error('The coach did not answer. Please try again.');
+  return clean;
 }

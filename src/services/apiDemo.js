@@ -1,6 +1,6 @@
-// API en modo demo: misma interfaz que apiSupabase pero con datos locales
-// (AsyncStorage → localStorage en web). No hay base de datos remota.
-// La IA (Gemini) sigue funcionando con la key del usuario guardada localmente.
+// Demo-mode API: same interface as apiSupabase but backed by local data
+// (AsyncStorage → localStorage on web). No remote database.
+// The AI (Gemini) still works with the user's key stored locally.
 
 import { DEMO_USER_ID, nextId, seedDemoIfNeeded } from './demoStorage';
 import {
@@ -12,8 +12,18 @@ import {
   demoSaveWeight,
   demoGetPrefs,
   demoSavePrefs,
+  demoGetWorkouts,
+  demoSaveWorkouts,
+  demoGetActivity,
+  demoSaveActivity,
 } from './demoStorage';
-import { parseFoodConKey, mejorarPreferenciaConKey, describirImagenConKey } from './gemini';
+import {
+  parseFoodConKey,
+  mejorarPreferenciaConKey,
+  describirImagenConKey,
+  coachReplyConKey,
+} from './gemini';
+import { guessMealType } from '../utils/nutricion';
 
 function parseItems(items) {
   if (Array.isArray(items)) return items;
@@ -28,22 +38,24 @@ function parseItems(items) {
   return [];
 }
 
-// ---- Usuario / perfil ----
+// ---- User / profile ----
 export async function getUser() {
   await seedDemoIfNeeded();
   const user = await demoGetUser();
-  return (
-    user ?? {
-      id: DEMO_USER_ID,
-      objetivo_kcal: 2000,
-      meta_peso_kg: null,
-      gemini_api_key: '',
-      altura_cm: null,
-      sexo: '',
-      edad: null,
-      nivel_actividad: 1.2,
-    }
-  );
+  return {
+    ...(user ?? {}),
+    id: DEMO_USER_ID,
+    objetivo_kcal: user?.objetivo_kcal ?? 2000,
+    meta_peso_kg: user?.meta_peso_kg ?? null,
+    gemini_api_key: user?.gemini_api_key ?? '',
+    altura_cm: user?.altura_cm ?? null,
+    sexo: user?.sexo ?? '',
+    edad: user?.edad ?? null,
+    nivel_actividad: user?.nivel_actividad ?? 1.2,
+    step_goal: user?.step_goal ?? 8000,
+    water_goal: user?.water_goal ?? 8,
+    goal_type: user?.goal_type ?? 'maintain',
+  };
 }
 
 export async function updateUser({
@@ -54,6 +66,9 @@ export async function updateUser({
   sexo,
   edad,
   nivelActividad,
+  stepGoal,
+  waterGoal,
+  goalType,
 }) {
   await seedDemoIfNeeded();
   const user = await demoGetUser();
@@ -67,17 +82,21 @@ export async function updateUser({
     sexo: sexo ?? '',
     edad: edad ?? null,
     nivel_actividad: nivelActividad ?? 1.2,
+    step_goal: stepGoal ?? user?.step_goal ?? 8000,
+    water_goal: waterGoal ?? user?.water_goal ?? 8,
+    goal_type: goalType ?? user?.goal_type ?? 'maintain',
   };
   return demoSaveUser(updated);
 }
 
-// ---- Comidas ----
-export async function createFoodEntry({ texto, items, totalKcal, fecha }) {
+// ---- Meals ----
+export async function createFoodEntry({ texto, items, totalKcal, fecha, mealType }) {
   const rows = await demoGetFood();
   const entry = {
     id: nextId('food'),
     user_id: DEMO_USER_ID,
     fecha: fecha.toISOString(),
+    meal_type: mealType || guessMealType(fecha),
     texto_original: texto,
     items,
     total_kcal: totalKcal,
@@ -101,13 +120,14 @@ export async function listFoodEntries({ desde, hasta, limit, offset } = {}) {
   return mapped;
 }
 
-export async function updateFoodEntry(id, { texto, items, totalKcal, fecha }) {
+export async function updateFoodEntry(id, { texto, items, totalKcal, fecha, mealType }) {
   const rows = await demoGetFood();
   const idx = rows.findIndex((r) => r.id === id);
-  if (idx === -1) throw new Error('La comida no existe.');
+  if (idx === -1) throw new Error('That meal no longer exists.');
   rows[idx] = {
     ...rows[idx],
     fecha: fecha.toISOString(),
+    meal_type: mealType || rows[idx].meal_type || guessMealType(fecha),
     texto_original: texto,
     items,
     total_kcal: totalKcal,
@@ -121,7 +141,7 @@ export async function deleteFoodEntry(id) {
   await demoSaveFood(rows.filter((r) => r.id !== id));
 }
 
-// ---- Pesos ----
+// ---- Weight ----
 export async function createWeightEntry({ pesoKg, measuredAt }) {
   const rows = await demoGetWeight();
   const entry = {
@@ -155,7 +175,88 @@ export async function deleteWeightEntry(id) {
   await demoSaveWeight(rows.filter((r) => r.id !== id));
 }
 
-// ---- Preferencias del usuario para la IA ----
+// ---- Workouts ----
+export async function createWorkoutSession({
+  name,
+  startedAt,
+  endedAt,
+  durationMin,
+  notes,
+  exercises,
+  totalVolumeKg,
+  totalSets,
+}) {
+  const rows = await demoGetWorkouts();
+  const entry = {
+    id: nextId('workout'),
+    user_id: DEMO_USER_ID,
+    name,
+    started_at: startedAt.toISOString(),
+    ended_at: endedAt ? endedAt.toISOString() : null,
+    duration_min: durationMin ?? null,
+    notes: notes ?? '',
+    exercises,
+    total_volume_kg: totalVolumeKg ?? 0,
+    total_sets: totalSets ?? 0,
+    created_at: new Date().toISOString(),
+  };
+  await demoSaveWorkouts([entry, ...rows]);
+  return entry;
+}
+
+export async function listWorkoutSessions({ desde, hasta, limit, offset } = {}) {
+  let rows = await demoGetWorkouts();
+  if (desde) rows = rows.filter((r) => r.started_at >= desde);
+  if (hasta) rows = rows.filter((r) => r.started_at <= hasta);
+  rows = [...rows].sort((a, b) => (a.started_at < b.started_at ? 1 : -1));
+  if (limit != null) {
+    const start = offset || 0;
+    const hasMore = rows.length > start + limit;
+    return { data: rows.slice(start, start + limit), hasMore };
+  }
+  return rows;
+}
+
+export async function deleteWorkoutSession(id) {
+  const rows = await demoGetWorkouts();
+  await demoSaveWorkouts(rows.filter((r) => r.id !== id));
+}
+
+// ---- Daily activity (steps + water) ----
+export async function getDailyActivity(day) {
+  const rows = await demoGetActivity();
+  const row = rows.find((r) => String(r.day) === String(day));
+  return {
+    day,
+    steps: Number(row?.steps) || 0,
+    water: Number(row?.water) || 0,
+  };
+}
+
+export async function saveDailyActivity({ day, steps, water }) {
+  const rows = await demoGetActivity();
+  const idx = rows.findIndex((r) => String(r.day) === String(day));
+  const clean = {
+    steps: Math.max(0, Math.round(Number(steps) || 0)),
+    water: Math.max(0, Math.round(Number(water) || 0)),
+  };
+  if (idx === -1) {
+    rows.push({
+      id: nextId('activity'),
+      user_id: DEMO_USER_ID,
+      day,
+      ...clean,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+  } else {
+    rows[idx] = { ...rows[idx], ...clean, updated_at: new Date().toISOString() };
+  }
+  await demoSaveActivity(rows);
+  return { day, ...clean };
+}
+
+// ---- User preferences for the AI ----
 export async function listUserPreferences() {
   const rows = await demoGetPrefs();
   return [...rows].sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
@@ -178,7 +279,7 @@ export async function deleteUserPreference(id) {
   await demoSavePrefs(rows.filter((r) => r.id !== id));
 }
 
-// ---- IA ----
+// ---- AI ----
 export async function parseFood(texto) {
   const user = await getUser();
   const prefs = await listUserPreferences();
@@ -194,4 +295,9 @@ export async function describeFoodImage(base64, mimeType) {
 export async function mejorarPreferencia(texto) {
   const user = await getUser();
   return mejorarPreferenciaConKey(user.gemini_api_key, texto);
+}
+
+export async function coachReply(context, messages) {
+  const user = await getUser();
+  return coachReplyConKey(user.gemini_api_key, context, messages);
 }

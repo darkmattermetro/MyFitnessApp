@@ -7,27 +7,34 @@ export default function ConfirmDialog({
   visible,
   title,
   message,
-  confirmText = 'Eliminar',
+  confirmText = 'Delete',
+  cancelText = 'Cancel',
   icon = 'trash-outline',
+  tone = 'danger',
   loading = false,
   onConfirm,
   onCancel,
 }) {
+  const palette =
+    tone === 'primary'
+      ? { color: colors.primary, bg: colors.primarySoft, variant: 'primary' }
+      : { color: colors.danger, bg: colors.dangerSoft, variant: 'danger' };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.backdrop}>
         <Card style={styles.card}>
-          <View style={styles.iconWrap}>
-            <Ionicons name={icon} size={26} color={colors.danger} />
+          <View style={[styles.iconWrap, { backgroundColor: palette.bg }]}>
+            <Ionicons name={icon} size={26} color={palette.color} />
           </View>
           {title ? <Text style={styles.title}>{title}</Text> : null}
           {message ? <Text style={styles.message}>{message}</Text> : null}
           <View style={styles.actions}>
             <Button variant="secondary" onPress={onCancel} disabled={loading} style={styles.btn}>
-              Cancelar
+              {cancelText}
             </Button>
             <Button
-              variant="danger"
+              variant={palette.variant}
               icon={loading ? undefined : icon}
               onPress={onConfirm}
               loading={loading}
@@ -61,7 +68,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: radius.pill,
-    backgroundColor: colors.dangerSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,

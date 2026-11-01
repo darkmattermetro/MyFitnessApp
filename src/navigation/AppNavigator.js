@@ -7,6 +7,7 @@ import { colors, font, radius, spacing } from '../theme/colors';
 import DashboardScreen from '../screens/DashboardScreen';
 import RegistrarComidaScreen from '../screens/RegistrarComidaScreen';
 import HistorialScreen from '../screens/HistorialScreen';
+import WorkoutScreen from '../screens/WorkoutScreen';
 import PesoScreen from '../screens/PesoScreen';
 import PerfilScreen from '../screens/PerfilScreen';
 
@@ -17,19 +18,22 @@ const IS_WEB = Platform.OS === 'web';
 const iconName = (base, focused) => (focused ? base : `${base}-outline`);
 
 const icons = {
-  Hoy: ({ focused, color }) => (
+  Today: ({ focused, color }) => (
     <Ionicons name={iconName('pie-chart', focused)} size={22} color={color} />
   ),
-  Comida: ({ focused, color }) => (
+  Food: ({ focused, color }) => (
     <Ionicons name={iconName('fast-food', focused)} size={22} color={color} />
   ),
-  Historial: ({ focused, color }) => (
+  History: ({ focused, color }) => (
     <Ionicons name={iconName('time', focused)} size={22} color={color} />
   ),
-  Peso: ({ focused, color }) => (
+  Train: ({ focused, color }) => (
+    <Ionicons name={iconName('barbell', focused)} size={22} color={color} />
+  ),
+  Weight: ({ focused, color }) => (
     <Ionicons name={iconName('scale', focused)} size={22} color={color} />
   ),
-  Perfil: ({ focused, color }) => (
+  Profile: ({ focused, color }) => (
     <Ionicons name={iconName('person', focused)} size={22} color={color} />
   ),
 };
@@ -68,12 +72,13 @@ export default function AppNavigator() {
               }),
         })}
       >
-      <Tab.Screen name="Hoy" component={DashboardScreen} />
-      <Tab.Screen name="Comida" component={RegistrarComidaScreen} />
-      <Tab.Screen name="Historial" component={HistorialScreen} />
-      <Tab.Screen name="Peso" component={PesoScreen} />
-      <Tab.Screen name="Perfil" component={PerfilScreen} />
-    </Tab.Navigator>
+        <Tab.Screen name="Today" component={DashboardScreen} />
+        <Tab.Screen name="Food" component={RegistrarComidaScreen} />
+        <Tab.Screen name="History" component={HistorialScreen} />
+        <Tab.Screen name="Train" component={WorkoutScreen} />
+        <Tab.Screen name="Weight" component={PesoScreen} />
+        <Tab.Screen name="Profile" component={PerfilScreen} />
+      </Tab.Navigator>
     </View>
   );
 }

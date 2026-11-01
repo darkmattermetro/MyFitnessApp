@@ -24,7 +24,7 @@ export default function PreferenciasSection() {
       listUserPreferences()
         .then(setPreferencias)
         .catch((e) =>
-          toast(e.message || 'No se pudieron cargar las preferencias.', 'error'),
+          toast(e.message || 'Could not load your preferences.', 'error'),
         );
     }, [toast]),
   );
@@ -32,7 +32,7 @@ export default function PreferenciasSection() {
   const agregarPreferencia = async () => {
     const texto = prefNueva.trim();
     if (!texto) {
-      toast('Escribí una preferencia.', 'info');
+      toast('Write a preference first.', 'info');
       return;
     }
     setAgregandoPref(true);
@@ -41,9 +41,9 @@ export default function PreferenciasSection() {
       setPrefNueva('');
       const prefs = await listUserPreferences();
       setPreferencias(prefs);
-      toast('Preferencia guardada.', 'success');
+      toast('Preference saved.', 'success');
     } catch (e) {
-      toast(e.message || 'No se pudo guardar la preferencia.', 'error');
+      toast(e.message || 'Could not save the preference.', 'error');
     } finally {
       setAgregandoPref(false);
     }
@@ -52,16 +52,16 @@ export default function PreferenciasSection() {
   const mejorar = async () => {
     const texto = prefNueva.trim();
     if (!texto) {
-      toast('Escribí una preferencia para mejorar.', 'info');
+      toast('Write a preference to improve first.', 'info');
       return;
     }
     setMejorando(true);
     try {
       const mejorada = await mejorarPreferencia(texto);
       setPrefNueva(mejorada);
-      toast('Preferencia mejorada. Revisala y agregala cuando quieras.', 'success');
+      toast('Preference improved. Review it and save when ready.', 'success');
     } catch (e) {
-      toast(e.message || 'No se pudo mejorar la preferencia.', 'error');
+      toast(e.message || 'Could not improve the preference.', 'error');
     } finally {
       setMejorando(false);
     }
@@ -72,28 +72,27 @@ export default function PreferenciasSection() {
       await deleteUserPreference(id);
       setPreferencias((prev) => prev.filter((p) => p.id !== id));
     } catch (e) {
-      toast(e.message || 'No se pudo eliminar.', 'error');
+      toast(e.message || 'Could not delete the preference.', 'error');
     }
   };
 
   return (
     <Card>
-      <SectionLabel>Preferencias de IA</SectionLabel>
+      <SectionLabel>AI preferences</SectionLabel>
       <Text style={styles.calcHint}>
-        Escribí una preferencia o instrucción para la IA (datos, criterios o
-        detalles tuyos, por ejemplo tu marca de galletas). Se usa como contexto
-        adicional al interpretar tus comidas y nunca altera el formato de
-        respuesta.
+        Write a preference or instruction for the AI (facts, criteria or personal
+        details, for example the brand of your cookies). It is used as extra
+        context when interpreting your meals and never changes the response
+        format.
       </Text>
       <Input
         multiline
         value={prefNueva}
         onChangeText={setPrefNueva}
-        placeholder="Ej: mis galletas integrales son de la marca X, 2 unidades = 80 kcal"
+        placeholder="e.g. my whole-wheat cookies are brand X, 2 units = 80 kcal"
         style={styles.prefInput}
       />
       <View style={styles.prefActions}>
-        
         <Button
           variant="secondary"
           icon="add"
@@ -102,7 +101,7 @@ export default function PreferenciasSection() {
           loading={agregandoPref}
           style={styles.prefBtn}
         >
-          Guardar
+          Save
         </Button>
         <Button
           variant="primary"
@@ -112,7 +111,7 @@ export default function PreferenciasSection() {
           loading={mejorando}
           style={styles.prefBtn}
         >
-          Mejorar con IA
+          Improve with AI
         </Button>
       </View>
       {preferencias.length > 0 ? (
@@ -127,7 +126,7 @@ export default function PreferenciasSection() {
           ))}
         </View>
       ) : (
-        <Text style={styles.prefVacio}>Todavía no guardaste preferencias.</Text>
+        <Text style={styles.prefVacio}>No preferences saved yet.</Text>
       )}
     </Card>
   );
