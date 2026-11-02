@@ -470,7 +470,14 @@ export default function PerfilScreen() {
           </GridItem>
         </Grid>
 
-        {Platform.OS === 'android' ? <HealthConnectCard /> : <GoogleFitCard />}
+        {Platform.OS === 'android' ? (
+          <HealthConnectCard />
+        ) : (
+          <>
+            <GoogleFitCard />
+            <HealthConnectCard />
+          </>
+        )}
 
         <Button
           variant="secondary"

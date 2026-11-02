@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card } from './ui';
@@ -101,7 +101,11 @@ export default function HealthConnectCard() {
     }
   };
 
-  let unavailableMessage = 'Health Connect is not available on this phone. It requires Android 9 or later and Google Play services.';
+  let unavailableMessage = Platform.OS === 'web'
+    ? 'Health Connect cannot connect from a website. Install the Android app to read steps from Health Connect. Google Fit remains available above for web step syncing.'
+    : Platform.OS !== 'android'
+      ? 'Health Connect is available in the Android app. Use Google Fit on this device where supported.'
+      : 'Health Connect is not available on this phone. It requires Android 9 or later and Google Play services.';
   if (status?.updateRequired) unavailableMessage = 'Update Health Connect from Google Play, then try again.';
   if (status?.error) unavailableMessage = 'Health Connect needs an Android development or production build. It cannot run in Expo Go. Build a new Android app after setup.';
 
