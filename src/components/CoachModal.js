@@ -26,7 +26,7 @@ const SUGGESTIONS = [
 ];
 
 const WELCOME =
-  "Hi! I'm your OpenFit coach. Ask me about meals, training, hydration or how to reach your goals. I can see today's summary, so you can just say \"what now?\".";
+  "Hi! I'm your OpenFit coach. Ask me about meals, training, hydration or how to reach your goals. I can see today's summary, so you can just say \"what now?\". When you send a message, your recent chat and today's summary are sent to Google Gemini using your key.";
 
 let counter = 0;
 function uid() {

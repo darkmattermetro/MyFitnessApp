@@ -26,6 +26,19 @@ export async function signIn(email, password) {
   return data;
 }
 
+export async function requestPasswordReset(email) {
+  const redirectTo = typeof window !== 'undefined'
+    ? window.location.origin
+    : 'openfit://reset-password';
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) throw new Error(messageFor(error));
+}
+
+export async function updatePassword(password) {
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw new Error(messageFor(error));
+}
+
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) throw new Error(messageFor(error));
@@ -50,6 +63,6 @@ export async function getCurrentUserId() {
 
 export function onAuthStateChange(callback) {
   return supabase.auth.onAuthStateChange((_event, session) => {
-    callback(session);
+    callback(session, _event);
   });
 }

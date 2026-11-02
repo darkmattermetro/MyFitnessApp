@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import AppNavigator from './src/navigation/AppNavigator';
 import AuthScreen from './src/screens/AuthScreen';
+import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import ToastProvider from './src/components/Toast';
 import { colors, font, radius, spacing } from './src/theme/colors';
@@ -30,7 +31,7 @@ const DemoBanner = () => {
           fontWeight: '600',
         }}
       >
-        {demo ? '● Offline — local data' : '● Online'}
+        {demo ? '● Demo — logs are local; AI and sync use the internet' : '● Account mode — syncs when connected'}
       </Text>
     </View>
   );
@@ -40,6 +41,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(null);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   const iniciar = async () => {
     setReady(false);
@@ -69,8 +71,11 @@ export default function App() {
           setReady(true);
         }
       });
-    const sub = onAuthStateChange((s) => {
-      if (activo) setSession(s);
+    const sub = onAuthStateChange((s, event) => {
+      if (activo) {
+        setSession(s);
+        if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
+      }
     });
 
     // Keep the session alive across app backgrounding / tab switching.
@@ -131,7 +136,11 @@ export default function App() {
           {IS_WEB && <DemoBanner />}
           <NavigationContainer>
             <StatusBar style="auto" />
-            {session ? <AppNavigator /> : <AuthScreen />}
+            {session
+              ? passwordRecovery
+                ? <ResetPasswordScreen onComplete={() => setPasswordRecovery(false)} />
+                : <AppNavigator />
+              : <AuthScreen />}
           </NavigationContainer>
         </ToastProvider>
       </SafeAreaProvider>

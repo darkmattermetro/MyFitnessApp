@@ -11,6 +11,8 @@ const auth = isDemoMode() ? authDemo : authSupabase;
 
 export const signUp = auth.signUp;
 export const signIn = auth.signIn;
+export const requestPasswordReset = auth.requestPasswordReset;
+export const updatePassword = auth.updatePassword;
 export const signOut = auth.signOut;
 export const getSession = auth.getSession;
 export const getCurrentUser = auth.getCurrentUser;

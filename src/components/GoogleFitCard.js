@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import * as Google from 'expo-auth-session/providers/google';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card } from './ui';
@@ -7,6 +7,7 @@ import { colors, font, radius, spacing } from '../theme/colors';
 import {
   isConfigured,
   getClientIds,
+  getConfigurationMessage,
   loadTokens,
   saveTokens,
   clearTokens,
@@ -21,61 +22,164 @@ export default function GoogleFitCard() {
   const [lastSync, setLastSync] = useState(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-
+  const [storageReady, setStorageReady] = useState(false);
   const ids = getClientIds();
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    scopes: ['https://www.googleapis.com/auth/fitness.activity.read'],
-    clientId: ids.web,
-    androidClientId: ids.android,
-    iosClientId: ids.ios,
-  });
+  const configured = isConfigured();
+  const redirectUri = Platform.OS === 'web' && typeof window !== 'undefined'
+    ? window.location.origin
+    : undefined;
 
+  // Always call hooks unconditionally. Google.useAuthRequest throws when the
+  // platform client ID is missing, so it lives in a child mounted only when
+  // configuration is valid.
   useEffect(() => {
-    (async () => {
-      setTokens(await loadTokens());
-      setLastSync(await getLastSync());
-    })();
-  }, []);
+    let active = true;
+    Promise.all([loadTokens(), getLastSync()])
+      .then(([storedTokens, syncDate]) => {
+        if (active) {
+          setTokens(storedTokens);
+          setLastSync(syncDate);
+        }
+      })
+      .catch(() => {
+        if (active) toast.showToast('Could not load the Google Fit connection.');
+      })
+      .finally(() => {
+        if (active) setStorageReady(true);
+      });
+    return () => { active = false; };
+  }, [toast]);
 
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { access_token, refresh_token, expires_in } = response.params || {};
-      if (access_token) {
-        const next = {
-          access_token,
-          refresh_token,
-          expires_at: Date.now() + (Number(expires_in) || 3600) * 1000,
-        };
-        saveTokens(next).then(() => setTokens(next));
-        toast.showToast('Google Fit connected');
-      }
-    } else if (response?.type === 'error') {
-      toast.showToast(response.error?.message || 'Could not connect Google Fit');
-    }
-  }, [response]);
-
-  if (!isConfigured()) {
+  if (!configured) {
     return (
       <Card style={styles.card}>
-        <Text style={styles.title}>Google Fit</Text>
-        <Text style={styles.hint}>
-          Not configured. Add EXPO_PUBLIC_GOOGLE_FIT_WEB_CLIENT_ID (and the
-          Android/iOS variants) to your .env and rebuild to enable step sync.
-        </Text>
+        <View style={styles.header}>
+          <Ionicons name="fitness-outline" size={20} color={colors.primary} />
+          <Text style={styles.title}>Google Fit</Text>
+          <Text style={styles.badgeText}>Not configured</Text>
+        </View>
+        <Text style={styles.hint}>{getConfigurationMessage()}</Text>
       </Card>
     );
   }
 
-  const connected = !!tokens?.access_token;
+  if (!storageReady) {
+    return (
+      <Card style={styles.card}>
+        <Text style={styles.title}>Google Fit</Text>
+        <Text style={styles.hint}>Checking your saved connection…</Text>
+      </Card>
+    );
+  }
+
+  return (
+    <GoogleFitConnection
+      ids={ids}
+      redirectUri={redirectUri}
+      tokens={tokens}
+      setTokens={setTokens}
+      lastSync={lastSync}
+      setLastSync={setLastSync}
+      loading={loading}
+      setLoading={setLoading}
+      syncing={syncing}
+      setSyncing={setSyncing}
+      toast={toast}
+    />
+  );
+}
+
+function GoogleFitConnection({
+  ids,
+  redirectUri,
+  tokens,
+  setTokens,
+  lastSync,
+  setLastSync,
+  loading,
+  setLoading,
+  syncing,
+  setSyncing,
+  toast,
+}) {
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    scopes: ['https://www.googleapis.com/auth/fitness.activity.read'],
+    webClientId: ids.web,
+    androidClientId: ids.android,
+    iosClientId: ids.ios,
+    ...(redirectUri ? { redirectUri } : {}),
+    selectAccount: true,
+  });
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const accessToken = response.authentication?.accessToken || response.params?.access_token;
+      if (!accessToken) {
+        toast.showToast('Google connected without a step access token. Try connecting again.');
+        return;
+      }
+      const next = {
+        access_token: accessToken,
+        refresh_token: response.authentication?.refreshToken || response.params?.refresh_token || null,
+        expires_at: Date.now() + (Number(response.authentication?.expiresIn || response.params?.expires_in) || 3600) * 1000,
+      };
+      saveTokens(next)
+        .then(() => {
+          setTokens(next);
+          toast.showToast('Google Fit connected. Sync your steps to import them.');
+        })
+        .catch(() => toast.showToast('Google connected, but the connection could not be saved.'));
+    } else if (response?.type === 'error') {
+      toast.showToast(response.error?.message || 'Could not connect your Google account.');
+    }
+  }, [response, setTokens, toast]);
+
+  useEffect(() => {
+    if (!tokens?.access_token) return undefined;
+    let active = true;
+    (async () => {
+      try {
+        const previousSync = await getLastSync();
+        const age = previousSync ? Date.now() - new Date(previousSync).getTime() : Infinity;
+        if (age < 24 * 60 * 60 * 1000) return;
+        setSyncing(true);
+        const result = await syncSteps(7);
+        if (active) setLastSync(result.lastSync);
+      } catch (error) {
+        if (active) {
+          if (/expired|connect google fit first/i.test(error.message || '')) {
+            setTokens(null);
+            setLastSync(null);
+          }
+          toast.showToast(error.message || 'Automatic step sync failed.');
+        }
+      } finally {
+        if (active) setSyncing(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [tokens?.access_token, setLastSync, setSyncing, toast]);
+
+  const connected = Boolean(tokens?.access_token);
 
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const res = await syncSteps(7);
-      setLastSync(res.lastSync);
-      toast.showToast(`Synced ${res.updated} day(s) of steps`);
-    } catch (e) {
-      toast.showToast(e.message || 'Sync failed');
+      const result = await syncSteps(7);
+      setLastSync(result.lastSync);
+      if (result.imported === 0) {
+        toast.showToast('Google returned no step data for the last 7 days. Check Fit sync and account permissions.');
+      } else if (result.updated === 0) {
+        toast.showToast('Step data arrived, but your saved step counts are already higher.');
+      } else {
+        toast.showToast(`Imported steps for ${result.updated} day(s).`);
+      }
+    } catch (error) {
+      if (/expired|connect google fit first/i.test(error.message || '')) {
+        setTokens(null);
+        setLastSync(null);
+      }
+      toast.showToast(error.message || 'Step sync failed. Reconnect Google Fit and try again.');
     } finally {
       setSyncing(false);
     }
@@ -87,7 +191,9 @@ export default function GoogleFitCard() {
       await clearTokens();
       setTokens(null);
       setLastSync(null);
-      toast.showToast('Google Fit disconnected');
+      toast.showToast('Google Fit disconnected.');
+    } catch {
+      toast.showToast('Could not remove the saved Google connection.');
     } finally {
       setLoading(false);
     }
@@ -98,18 +204,8 @@ export default function GoogleFitCard() {
       <View style={styles.header}>
         <Ionicons name="fitness-outline" size={20} color={colors.primary} />
         <Text style={styles.title}>Google Fit</Text>
-        <View
-          style={[
-            styles.badge,
-            { backgroundColor: connected ? colors.primarySoft : colors.surfaceMuted },
-          ]}
-        >
-          <Text
-            style={[
-              styles.badgeText,
-              { color: connected ? colors.primaryDark : colors.textMuted },
-            ]}
-          >
+        <View style={[styles.badge, { backgroundColor: connected ? colors.primarySoft : colors.surfaceMuted }]}>
+          <Text style={[styles.badgeText, { color: connected ? colors.primaryDark : colors.textMuted }]}>
             {connected ? 'Connected' : 'Not connected'}
           </Text>
         </View>
@@ -117,13 +213,14 @@ export default function GoogleFitCard() {
 
       <Text style={styles.hint}>
         {connected
-          ? 'Import your step counts from Google Fit into the Today screen. Manual entries are kept when they are higher.'
-          : 'Connect your Google account to import step counts automatically.'}
+          ? 'Import step counts for the last 7 days. Open Profile to sync automatically once a day, or sync now. Higher saved counts are kept.'
+          : 'Connect the Google account that receives your step data, then sync from this card.'}
       </Text>
 
-      {lastSync ? (
-        <Text style={styles.meta}>Last sync: {new Date(lastSync).toLocaleString()}</Text>
-      ) : null}
+      {lastSync ? <Text style={styles.meta}>Last sync: {new Date(lastSync).toLocaleString()}</Text> : null}
+      <Text style={styles.legacyHint}>
+        This connection uses Google’s legacy Fit API; Google announced its deprecation for 2026, so access depends on your Google project.
+      </Text>
 
       <View style={styles.actions}>
         {!connected ? (
@@ -131,28 +228,17 @@ export default function GoogleFitCard() {
             variant="primary"
             icon="link-outline"
             onPress={() => promptAsync()}
-            disabled={!request}
+            disabled={!request || loading}
+            loading={loading}
           >
             Connect Google Fit
           </Button>
         ) : (
           <>
-            <Button
-              variant="primary"
-              icon="sync-outline"
-              onPress={handleSync}
-              loading={syncing}
-              disabled={syncing}
-            >
+            <Button variant="primary" icon="sync-outline" onPress={handleSync} loading={syncing} disabled={syncing}>
               Sync steps (7 days)
             </Button>
-            <Button
-              variant="ghost"
-              icon="unlink-outline"
-              onPress={handleDisconnect}
-              loading={loading}
-              disabled={loading}
-            >
+            <Button variant="ghost" icon="unlink-outline" onPress={handleDisconnect} loading={loading} disabled={loading}>
               Disconnect
             </Button>
           </>
@@ -164,30 +250,12 @@ export default function GoogleFitCard() {
 
 const styles = StyleSheet.create({
   card: { marginBottom: spacing.md },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  title: {
-    flex: 1,
-    fontSize: font.base,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  badge: {
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-  },
-  badgeText: { fontSize: font.xs, fontWeight: '700' },
-  hint: {
-    fontSize: font.sm,
-    color: colors.textMuted,
-    lineHeight: 18,
-    marginBottom: spacing.sm,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  title: { flex: 1, fontSize: font.base, fontWeight: '700', color: colors.text },
+  badge: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  badgeText: { fontSize: font.xs, fontWeight: '700', color: colors.textMuted },
+  hint: { fontSize: font.sm, color: colors.textMuted, lineHeight: 18, marginBottom: spacing.sm },
   meta: { fontSize: font.xs, color: colors.textMuted, marginBottom: spacing.sm },
+  legacyHint: { fontSize: font.xs, lineHeight: 16, color: colors.warning, marginBottom: spacing.sm },
   actions: { gap: spacing.sm },
 });

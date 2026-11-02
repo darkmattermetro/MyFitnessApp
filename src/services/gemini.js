@@ -3,8 +3,7 @@
 // Does not depend on Supabase: works the same in demo and production mode.
 
 const GEMINI_LITE = 'gemini-flash-lite-latest';
-const GEMINI_URL = (key) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_LITE}:generateContent?key=${key}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_LITE}:generateContent`;
 
 const PROMPT = `You are a nutritionist who turns food described in everyday language into nutritional data.
 
@@ -78,9 +77,12 @@ function bodyParts(prompt, imagen) {
 }
 
 async function callGemini(key, prompt, imagen) {
-  const res = await fetch(GEMINI_URL(key), {
+  const res = await fetch(GEMINI_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': key,
+    },
     body: JSON.stringify({
       contents: [{ parts: bodyParts(prompt, imagen) }],
     }),

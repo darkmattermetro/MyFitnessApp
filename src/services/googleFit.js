@@ -18,16 +18,34 @@ export const SCOPES = ['https://www.googleapis.com/auth/fitness.activity.read'];
 const TOKENS_KEY = 'google_fit_tokens';
 const LAST_SYNC_KEY = 'google_fit_last_sync';
 
-const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_FIT_WEB_CLIENT_ID;
-const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_FIT_ANDROID_CLIENT_ID;
-const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_FIT_IOS_CLIENT_ID;
+const WEB_CLIENT_ID = String(process.env.EXPO_PUBLIC_GOOGLE_FIT_WEB_CLIENT_ID || '').trim();
+const ANDROID_CLIENT_ID = String(process.env.EXPO_PUBLIC_GOOGLE_FIT_ANDROID_CLIENT_ID || '').trim();
+const IOS_CLIENT_ID = String(process.env.EXPO_PUBLIC_GOOGLE_FIT_IOS_CLIENT_ID || '').trim();
 
-export const isConfigured = () =>
-  Platform.OS === 'web'
-    ? !!WEB_CLIENT_ID
-    : Platform.OS === 'android'
-    ? !!ANDROID_CLIENT_ID
-    : !!IOS_CLIENT_ID;
+export function getClientIds() {
+  return { web: WEB_CLIENT_ID, android: ANDROID_CLIENT_ID, ios: IOS_CLIENT_ID };
+}
+
+function isGoogleClientId(value) {
+  return typeof value === 'string' && value.endsWith('.apps.googleusercontent.com');
+}
+
+export const isConfigured = () => {
+  if (Platform.OS === 'web') return isGoogleClientId(WEB_CLIENT_ID);
+  if (Platform.OS === 'android') return isGoogleClientId(ANDROID_CLIENT_ID);
+  if (Platform.OS === 'ios') return isGoogleClientId(IOS_CLIENT_ID);
+  return false;
+};
+
+export function getConfigurationMessage() {
+  if (Platform.OS === 'web') {
+    return 'Add a valid EXPO_PUBLIC_GOOGLE_FIT_WEB_CLIENT_ID ending in .apps.googleusercontent.com to Vercel. Add your hosted domain as an authorized JavaScript origin and redirect URI in Google Cloud, then redeploy.';
+  }
+  if (Platform.OS === 'android') {
+    return 'Add EXPO_PUBLIC_GOOGLE_FIT_ANDROID_CLIENT_ID to your build environment, then create a new Android build.';
+  }
+  return 'Add EXPO_PUBLIC_GOOGLE_FIT_IOS_CLIENT_ID to your build environment, then create a new iOS build.';
+}
 
 export async function loadTokens() {
   const raw = await secureStorage.getItem(TOKENS_KEY);
@@ -73,17 +91,13 @@ export async function getAccessToken() {
     return null;
   }
 
-  const clientId =
-    Platform.OS === 'web'
-      ? WEB_CLIENT_ID
-      : Platform.OS === 'android'
-      ? ANDROID_CLIENT_ID
-      : IOS_CLIENT_ID;
+  const clientId = Platform.OS === 'web'
+    ? WEB_CLIENT_ID
+    : Platform.OS === 'android'
+    ? ANDROID_CLIENT_ID
+    : IOS_CLIENT_ID;
 
   try {
-    const discovery = AuthSession.useProxy
-      ? AuthSession.makeRedirectUri({ useProxy: true })
-      : undefined;
     const result = await AuthSession.refreshAsync(
       {
         clientId,
@@ -159,13 +173,26 @@ export async function syncSteps(days = 7) {
   const token = await getAccessToken();
   if (!token) throw new Error('Connect Google Fit first.');
 
+  const safeDays = Math.max(1, Math.min(30, Math.round(Number(days) || 7)));
   const end = new Date();
   end.setHours(23, 59, 59, 999);
   const start = new Date();
-  start.setDate(start.getDate() - (days - 1));
+  start.setDate(start.getDate() - (safeDays - 1));
   start.setHours(0, 0, 0, 0);
 
-  const imported = await fetchSteps(token, start, end);
+  let imported;
+  try {
+    imported = await fetchSteps(token, start, end);
+  } catch (error) {
+    if (/Google Fit error 401/i.test(error.message || '')) {
+      await clearTokens();
+      throw new Error('Your Google Fit connection expired. Reconnect and grant activity access.');
+    }
+    if (/Google Fit error 403/i.test(error.message || '')) {
+      throw new Error('Google denied step access. Confirm the Fitness API is enabled and reconnect with activity access.');
+    }
+    throw error;
+  }
   let updated = 0;
   for (const { day, steps } of imported) {
     if (!steps) continue;
@@ -178,9 +205,5 @@ export async function syncSteps(days = 7) {
   }
   const now = new Date().toISOString();
   await setLastSync(now);
-  return { imported: imported.length, updated, lastSync: now };
-}
-
-export function getClientIds() {
-  return { web: WEB_CLIENT_ID, android: ANDROID_CLIENT_ID, ios: IOS_CLIENT_ID };
+  return { imported: imported.filter((row) => row.steps > 0).length, updated, lastSync: now };
 }

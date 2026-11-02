@@ -23,6 +23,14 @@ export async function signIn() {
   return { user: demoUser, session: demoSession };
 }
 
+export async function requestPasswordReset() {
+  throw new Error('Password recovery is only available for registered accounts.');
+}
+
+export async function updatePassword() {
+  throw new Error('Password changes are only available for registered accounts.');
+}
+
 export async function signOut() {
   await resetDemo();
 }

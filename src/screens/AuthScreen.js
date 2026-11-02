@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, Input, PasswordInput } from '../components/ui';
 import { colors, font, radius, spacing } from '../theme/colors';
-import { signIn, signUp } from '../services/auth';
+import { requestPasswordReset, signIn, signUp } from '../services/auth';
 
 export default function AuthScreen() {
   const { width } = useWindowDimensions();
@@ -22,6 +22,7 @@ export default function AuthScreen() {
   const [confirmar, setConfirmar] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
 
   const esLogin = modo === 'login';
 
@@ -70,7 +71,28 @@ export default function AuthScreen() {
   const cambiarModo = (nuevo) => {
     setModo(nuevo);
     setError(null);
+    setNotice(null);
     setConfirmar('');
+  };
+
+  const recuperarPassword = async () => {
+    const address = email.trim();
+    if (!address) {
+      setError('Enter your email first, then request a reset link.');
+      setNotice(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await requestPasswordReset(address);
+      setNotice('If an account exists for this email, a password reset link is on its way.');
+    } catch (e) {
+      setError(e.message || 'Could not send a reset link.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const innerWidth = Platform.OS === 'web' && width >= 900 ? 420 : null;
@@ -146,6 +168,12 @@ export default function AuthScreen() {
               >
                 {esLogin ? 'Sign in' : 'Sign up'}
               </Button>
+              {esLogin ? (
+                <TouchableOpacity style={styles.forgotLink} onPress={recuperarPassword} disabled={loading}>
+                  <Text style={styles.linkText}>Forgot your password?</Text>
+                </TouchableOpacity>
+              ) : null}
+              {notice ? <Text style={styles.notice}>{notice}</Text> : null}
             </Card>
 
             <TouchableOpacity
@@ -185,6 +213,7 @@ const styles = StyleSheet.create({
   subtitulo: { fontSize: font.base, color: colors.textMuted, textAlign: 'center', marginTop: spacing.sm, marginBottom: spacing.lg },
   card: { padding: spacing.lg },
   error: { color: colors.danger, textAlign: 'center', marginTop: spacing.sm },
+  notice: { color: colors.primaryDark, textAlign: 'center', marginTop: spacing.sm, lineHeight: 20 },
   hint: {
     fontSize: font.sm,
     color: colors.textMuted,
@@ -193,4 +222,5 @@ const styles = StyleSheet.create({
   },
   link: { marginTop: spacing.md, alignItems: 'center', paddingVertical: spacing.sm },
   linkText: { color: colors.primary, fontWeight: '600', fontSize: font.base },
+  forgotLink: { alignItems: 'center', paddingVertical: spacing.sm },
 });

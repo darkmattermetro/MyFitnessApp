@@ -20,6 +20,13 @@ import { colors, font, radius, spacing } from '../theme/colors';
 import { parseFood, createFoodEntry, describeFoodImage } from '../services/api';
 import { MEAL_TYPES, guessMealType } from '../utils/nutricion';
 
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+function numericValue(value) {
+  const parsed = Number(String(value ?? '').replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export default function RegistrarComidaScreen() {
   const { isDesktop } = useResponsive();
   const [texto, setTexto] = useState('');
@@ -134,11 +141,29 @@ export default function RegistrarComidaScreen() {
     const asset = res.assets[0];
     setImagen(asset);
 
-    // On web, base64 may be missing for large files or certain browsers.
-    // Fall back to reading the File object directly with FileReader.
+    if (asset.file?.size > MAX_IMAGE_BYTES) {
+      setError('Choose an image smaller than 15 MB so it can be sent to Gemini.');
+      setImagen(null);
+      return;
+    }
+
+    // On web, base64 may be missing in some browsers. Read the selected File,
+    // or fetch Expo's temporary object URL and read that Blob as a fallback.
     let base64 = asset.base64;
-    if (!base64 && asset.file) {
+    if (!base64) {
       try {
+        let file = asset.file;
+        if (!file && asset.uri) {
+          const response = await fetch(asset.uri);
+          if (!response.ok) throw new Error('Could not read the selected image.');
+          file = await response.blob();
+        }
+        if (file?.size > MAX_IMAGE_BYTES) {
+          setError('Choose an image smaller than 15 MB so it can be sent to Gemini.');
+          setImagen(null);
+          return;
+        }
+        if (!file) throw new Error('The browser did not provide image data. Choose the image again.');
         base64 = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (ev) => {
@@ -150,7 +175,7 @@ export default function RegistrarComidaScreen() {
             }
           };
           reader.onerror = () => reject(new Error('Failed to read file'));
-          reader.readAsDataURL(asset.file);
+          reader.readAsDataURL(file);
         });
       } catch (e) {
         setError(e.message || 'Could not read the image.');
@@ -160,6 +185,11 @@ export default function RegistrarComidaScreen() {
 
     if (!base64) {
       setError('Could not read the image as base64. Try a smaller image.');
+      return;
+    }
+    if (base64.length * 0.75 > MAX_IMAGE_BYTES) {
+      setError('Choose an image smaller than 15 MB so it can be sent to Gemini.');
+      setImagen(null);
       return;
     }
     describirImagen(base64, asset.mimeType || 'image/jpeg');
@@ -173,7 +203,7 @@ export default function RegistrarComidaScreen() {
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const total = (items || []).reduce((s, i) => s + (Number(i.kcal) || 0), 0);
+  const total = (items || []).reduce((s, i) => s + numericValue(i.kcal), 0);
 
   const guardar = async () => {
     if (!items || items.length === 0) return;
@@ -184,10 +214,10 @@ export default function RegistrarComidaScreen() {
         items: items.map((it) => ({
           name: String(it.name ?? '').trim(),
           amount: String(it.amount ?? ''),
-          kcal: Number(it.kcal) || 0,
-          protein: Number(it.protein) || 0,
-          fat: Number(it.fat) || 0,
-          carbs: Number(it.carbs) || 0,
+          kcal: numericValue(it.kcal),
+          protein: numericValue(it.protein),
+          fat: numericValue(it.fat),
+          carbs: numericValue(it.carbs),
           note: String(it.note ?? ''),
         })),
         totalKcal: total,
@@ -288,6 +318,9 @@ export default function RegistrarComidaScreen() {
             Describe it in your own words or upload a photo. Include amounts and how it was
             cooked.
           </Text>
+          <Text style={styles.aiNotice}>
+            AI estimates can be inaccurate. When you use AI, your meal text or selected photo and saved food preferences are sent to Google Gemini. Review the result before saving.
+          </Text>
 
           <Card style={styles.mealCard}>
             <Text style={styles.mealLabel}>Which meal is this?</Text>
@@ -381,6 +414,12 @@ export default function RegistrarComidaScreen() {
 }
 
 function Confirmacion({ items, total, updateItem, removeItem, onEditar, onGuardar, saving }) {
+  const macroTotals = items.reduce((totals, item) => ({
+    protein: totals.protein + numericValue(item.protein),
+    carbs: totals.carbs + numericValue(item.carbs),
+    fat: totals.fat + numericValue(item.fat),
+  }), { protein: 0, carbs: 0, fat: 0 });
+
   return (
     <View>
       <SectionLabel style={{ marginTop: spacing.md }}>Review before saving</SectionLabel>
@@ -410,6 +449,25 @@ function Confirmacion({ items, total, updateItem, removeItem, onEditar, onGuarda
               placeholderTextColor={colors.textMuted}
             />
           </View>
+          <View style={styles.macroInputs}>
+            {[
+              ['protein', 'Protein (g)'],
+              ['carbs', 'Carbs (g)'],
+              ['fat', 'Fat (g)'],
+            ].map(([field, label]) => (
+              <View key={field} style={styles.macroInputWrap}>
+                <Text style={styles.macroLabel}>{label}</Text>
+                <TextInput
+                  style={styles.macroInput}
+                  keyboardType="decimal-pad"
+                  value={String(item[field] ?? 0)}
+                  onChangeText={(value) => updateItem(index, field, value)}
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            ))}
+          </View>
           {item.note ? <Text style={styles.advertencia}>• {item.note}</Text> : null}
         </Card>
       ))}
@@ -421,6 +479,9 @@ function Confirmacion({ items, total, updateItem, removeItem, onEditar, onGuarda
           <Text style={styles.totalUnidad}> kcal</Text>
         </View>
       </View>
+      <Text style={styles.macroSummary}>
+        Estimated macros: {Math.round(macroTotals.protein)} g protein · {Math.round(macroTotals.carbs)} g carbs · {Math.round(macroTotals.fat)} g fat
+      </Text>
 
       <View style={styles.botones}>
         <Button variant="secondary" onPress={onEditar} disabled={saving} style={styles.flexBtn}>
@@ -446,6 +507,7 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1 },
   title: { fontSize: font.xl, fontWeight: '800', color: colors.text },
   subtitle: { fontSize: font.base, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.md },
+  aiNotice: { fontSize: font.sm, color: colors.textMuted, lineHeight: 19, marginBottom: spacing.md },
   mealCard: { marginBottom: spacing.md },
   mealLabel: {
     fontSize: font.sm,
@@ -510,6 +572,20 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   advertencia: { fontSize: font.sm, color: colors.textMuted, marginTop: spacing.sm },
+  macroInputs: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  macroInputWrap: { flex: 1, minWidth: 0 },
+  macroLabel: { fontSize: font.xs, color: colors.textMuted, marginBottom: spacing.xs },
+  macroInput: {
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    fontSize: font.base,
+    color: colors.text,
+    backgroundColor: colors.surfaceMuted,
+  },
+  macroSummary: { color: colors.textMuted, fontSize: font.sm, marginTop: -spacing.sm, marginBottom: spacing.md },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

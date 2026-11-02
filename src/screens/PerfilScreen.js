@@ -6,6 +6,8 @@ import {
   View,
   ActivityIndicator,
   TouchableOpacity,
+  Platform,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -29,6 +31,9 @@ import {
   getUser,
   updateUser,
   listWeightEntries,
+  listFoodEntries,
+  listWorkoutSessions,
+  listUserPreferences,
 } from '../services/api';
 import { getCurrentUser, signOut, isDemoMode } from '../services/auth';
 import { resetDemo } from '../services/demoStorage';
@@ -59,6 +64,7 @@ export default function PerfilScreen() {
   const [waterGoal, setWaterGoal] = useState('');
   const [goalType, setGoalType] = useState('maintain');
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [estado, setEstado] = useState('idle');
   const [vista, setVista] = useState('perfil');
   const [confirmarSalida, setConfirmarSalida] = useState(false);
@@ -115,6 +121,47 @@ export default function PerfilScreen() {
       await signOut();
     } catch (e) {
       toast(e.message || 'Could not sign out.', 'error');
+    }
+  };
+
+  const exportData = async () => {
+    setExporting(true);
+    try {
+      const [user, meals, weights, workouts, preferences] = await Promise.all([
+        getUser(),
+        listFoodEntries(),
+        listWeightEntries(),
+        listWorkoutSessions(),
+        listUserPreferences(),
+      ]);
+      const { gemini_api_key: _privateKey, ...safeProfile } = user || {};
+      const payload = JSON.stringify({
+        exportedAt: new Date().toISOString(),
+        profile: safeProfile,
+        meals,
+        weightEntries: weights,
+        workouts,
+        foodPreferences: preferences,
+      }, null, 2);
+
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const file = new Blob([payload], { type: 'application/json' });
+        const url = URL.createObjectURL(file);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `openfit-export-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        toast('Your data export was downloaded.', 'success');
+      } else {
+        await Share.share({ title: 'OpenFit data export', message: payload });
+      }
+    } catch (e) {
+      toast(e.message || 'Could not export your data.', 'error');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -333,7 +380,7 @@ export default function PerfilScreen() {
               <SectionLabel>AI</SectionLabel>
               <Field
                 label="Gemini API key"
-                hint="Your own key from https://aistudio.google.com/apikey. It is used to interpret your meals."
+                hint="Your own key from Google AI Studio. It stays in your profile record in account mode, or in this browser in demo mode. When you use AI, relevant meal text/photos, saved preferences, and coach context are sent to Google Gemini."
               >
                 <Input
                   value={apiKey}
@@ -425,6 +472,17 @@ export default function PerfilScreen() {
         <GoogleFitCard />
 
         <Button
+          variant="secondary"
+          icon="download-outline"
+          onPress={exportData}
+          loading={exporting}
+          disabled={exporting}
+        >
+          Export my data (JSON)
+        </Button>
+        <Text style={styles.exportHint}>Includes meals, workouts, weight, goals and food preferences. Your Gemini API key is excluded.</Text>
+
+        <Button
           variant="danger"
           icon={isDemoMode() ? 'refresh-outline' : 'log-out-outline'}
           onPress={() => setConfirmarSalida(true)}
@@ -458,6 +516,7 @@ const styles = StyleSheet.create({
   title: { fontSize: font.xl, fontWeight: '800', color: colors.text, marginBottom: spacing.md },
   estadoGuardando: { fontSize: font.sm, color: colors.textMuted, marginBottom: spacing.md },
   estadoGuardado: { fontSize: font.sm, color: colors.primaryDark, marginBottom: spacing.md },
+  exportHint: { fontSize: font.xs, lineHeight: 17, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.md },
   estadoError: { fontSize: font.sm, color: colors.danger, marginBottom: spacing.md },
   accountCard: {
     flexDirection: 'row',
