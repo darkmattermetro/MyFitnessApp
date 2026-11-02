@@ -111,6 +111,8 @@ Health Connect is available only in the Android app on supported devices (Androi
 
 Health Connect uses native Android code, so Expo Go and the Vercel web app cannot access it. After adding or changing this integration, create and install a new Android development or production build (for example, `npm run build:apk`). The app config includes the Health Connect plugin, step read permission, and the Android minimum SDK requirement. Users can manage or revoke access from the Health Connect permissions screen.
 
+For Android builds to show account login and sync to the same Supabase database as the website, add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` to the matching EAS environment (`preview` for `npm run build:apk`, `production` for `npm run build:android`). These build-time variables are embedded into the app. Vercel environment variables are separate and are not automatically copied to EAS. Without the Supabase values, the Android app intentionally opens in demo mode and keeps data on the device.
+
 ## Demo mode
 
 With no database or Supabase setup, all data lives in the browser (localStorage) and sample data is created on first launch (meals, weights, preferences and workouts).

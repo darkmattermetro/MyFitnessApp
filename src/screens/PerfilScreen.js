@@ -360,7 +360,11 @@ export default function PerfilScreen() {
         ) : estado === 'guardado' ? (
           <Text style={styles.estadoGuardado}>All changes saved ✓</Text>
         ) : estado === 'error' ? (
-          <Text style={styles.estadoError}>Could not save. Check your connection.</Text>
+          <Text style={styles.estadoError}>
+            {isDemoMode()
+              ? 'Could not save local changes. Try restarting the app.'
+              : 'Could not save. Check your connection.'}
+          </Text>
         ) : null}
 
         {email ? (

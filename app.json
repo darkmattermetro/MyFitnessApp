@@ -10,13 +10,16 @@
     "backgroundColor": "#F6F7F9",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tucas.fit"
+      "bundleIdentifier": "com.tucas.fit",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.tucas.fit",
-      "versionCode": 1,
+      "versionCode": 3,
       "permissions": [
-        "ACTIVITY_RECOGNITION",
+        "android.permission.ACTIVITY_RECOGNITION",
         "android.permission.health.READ_STEPS"
       ],
       "adaptiveIcon": {
@@ -62,11 +65,12 @@
             "minSdkVersion": 26
           }
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {
-        "projectId": "7a93b2a8-ac78-4b78-a6b7-902c0d06009a"
+        "projectId": "092b168f-928c-4b2b-b3a1-b6cf0a138be5"
       }
     },
     "runtimeVersion": {

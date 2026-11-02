@@ -1,7 +1,6 @@
 {
   "cli": {
-    "version": ">= 12.0.0",
-    "appVersionSource": "local"
+    "version": ">= 12.0.0"
   },
   "build": {
     "development": {
@@ -10,19 +9,15 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
       "environment": "preview",
+      "node": "22.13.0",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
-      "autoIncrement": true,
-      "channel": "production",
       "environment": "production",
-      "android": {
-        "buildType": "app-bundle"
-      }
+      "node": "22.13.0"
     }
   },
   "submit": {
