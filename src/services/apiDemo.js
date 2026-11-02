@@ -16,6 +16,8 @@ import {
   demoSaveWorkouts,
   demoGetActivity,
   demoSaveActivity,
+  demoGetAchievements,
+  demoUnlockAchievement,
 } from './demoStorage';
 import {
   parseFoodConKey,
@@ -301,3 +303,6 @@ export async function coachReply(context, messages) {
   const user = await getUser();
   return coachReplyConKey(user.gemini_api_key, context, messages);
 }
+
+export async function listAchievements() { return demoGetAchievements(); }
+export async function unlockAchievement(key, metadata) { return demoUnlockAchievement(key, metadata); }

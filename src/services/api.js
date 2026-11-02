@@ -30,3 +30,5 @@ export const parseFood = api.parseFood;
 export const describeFoodImage = api.describeFoodImage;
 export const mejorarPreferencia = api.mejorarPreferencia;
 export const coachReply = api.coachReply;
+export const listAchievements = api.listAchievements;
+export const unlockAchievement = api.unlockAchievement;

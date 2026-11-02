@@ -83,6 +83,7 @@ export default function HealthConnectCard() {
     try {
       const granted = await requestHealthConnectStepPermission();
       setStatus((current) => ({ ...(current || {}), available: true, permissionGranted: granted }));
+      await refresh();
       if (granted) showToast('Steps access granted. Importing your recent data.', 'success');
       else showToast('Steps access was not granted. You can change it in Health Connect settings.');
     } catch (error) {
@@ -132,14 +133,14 @@ export default function HealthConnectCard() {
       ) : (
         <>
           <Text style={styles.hint}>
-            Read daily step totals from Health Connect. Only step read access is requested. Sync runs when Profile opens at most once a day, or you can sync now.
+            Read daily steps, active calories, and sleep totals from Health Connect for your charts and AI coach. You choose which read permissions to grant. Sync runs when Profile opens at most once a day, or you can sync now.
           </Text>
           {lastSync ? <Text style={styles.meta}>Last sync: {new Date(lastSync).toLocaleString()}</Text> : null}
           <Text style={styles.meta}>OpenFit saves the imported daily total to your activity log. Higher step counts already in OpenFit are kept.</Text>
           <View style={styles.actions}>
-            {!status.permissionGranted ? (
+            {!status.metricsGranted ? (
               <Button variant="primary" icon="link-outline" onPress={connect} loading={connecting} disabled={connecting || checking}>
-                Connect Health Connect
+                {status.permissionGranted ? 'Enable steps, calories & sleep' : 'Connect Health Connect'}
               </Button>
             ) : (
               <>

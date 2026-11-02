@@ -20,7 +20,9 @@
       "versionCode": 3,
       "permissions": [
         "android.permission.ACTIVITY_RECOGNITION",
-        "android.permission.health.READ_STEPS"
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_SLEEP"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#044134",
@@ -77,7 +79,7 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/7a93b2a8-ac78-4b78-a6b7-902c0d06009a"
+      "url": "https://u.expo.dev/092b168f-928c-4b2b-b3a1-b6cf0a138be5"
     }
   }
 }

@@ -393,3 +393,17 @@ export async function coachReply(context, messages) {
   const user = await getUser();
   return coachReplyConKey(user.gemini_api_key, context, messages);
 }
+
+export async function listAchievements() {
+  const uid = await requireUserId();
+  const { data, error } = await supabase.from('user_achievements').select('*').eq('user_id', uid).order('unlocked_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function unlockAchievement(key, metadata = {}) {
+  const uid = await requireUserId();
+  const { error } = await supabase.from('user_achievements').upsert({ user_id: uid, achievement_key: key, metadata }, { onConflict: 'user_id,achievement_key', ignoreDuplicates: true });
+  if (error) throw error;
+  return listAchievements();
+}

@@ -17,6 +17,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Button, Card, ChipGroup, Container, EmptyState, SectionLabel, useResponsive } from '../components/ui';
 import ExercisePicker from '../components/ExercisePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
+import CoachModal from '../components/CoachModal';
 import { useToast } from '../components/Toast';
 import { colors, font, radius, spacing } from '../theme/colors';
 import { TEMPLATES, MUSCLE_LABEL, findExercise, planForDate } from '../data/exercises';
@@ -118,6 +119,7 @@ export default function WorkoutScreen() {
   const [confirm, setConfirm] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [planEnv, setPlanEnv] = useState('gym');
+  const [showCoach, setShowCoach] = useState(false);
 
   const cargar = useCallback(async () => {
     setError(null);
@@ -701,6 +703,14 @@ export default function WorkoutScreen() {
             </Button>
           </Card>
 
+          <Card style={{ marginTop: spacing.md }}>
+            <Text style={styles.planTitle}>AI training suggestions</Text>
+            <Text style={styles.planFocus}>Get ideas using this week’s training and today’s plan.</Text>
+            <Button icon="sparkles-outline" onPress={() => setShowCoach(true)}>
+              Ask AI Coach
+            </Button>
+          </Card>
+
           <SectionLabel style={styles.sectionLabel}>This week</SectionLabel>
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
@@ -865,6 +875,11 @@ export default function WorkoutScreen() {
           </View>
         </Container>
       </ScrollView>
+      <CoachModal
+        visible={showCoach}
+        onClose={() => setShowCoach(false)}
+        context={{ screen: 'Training planner', todayPlan: plan.title, planFocus: plan.focus, environment: planEnv, workoutsThisWeek: weekly.count, setsThisWeek: weekly.sets, trainingMinutesThisWeek: weekly.minutes, recentWorkouts: sessions.slice(0, 5).map((s) => s.name), request: 'Suggest a safe practical workout for today that fits the plan and training history.' }}
+      />
 
       <ConfirmDialog
         visible={Boolean(confirm)}

@@ -16,6 +16,9 @@ import { Badge, Card, Container, useResponsive } from '../components/ui';
 import MacroDonut from '../components/MacroDonut';
 import CoachModal from '../components/CoachModal';
 import AlertsModal from '../components/AlertsModal';
+import HealthInsights from '../components/HealthInsights';
+import DashboardSkeleton from '../components/DashboardSkeleton';
+import { getHealthConnectWeeklySummary } from '../services/healthConnect';
 import { colors, font, radius, spacing } from '../theme/colors';
 import {
   getDailyActivity,
@@ -24,6 +27,8 @@ import {
   listWeightEntries,
   listWorkoutSessions,
   saveDailyActivity,
+  listAchievements,
+  unlockAchievement,
 } from '../services/api';
 import {
   groupMealsByType,
@@ -39,6 +44,7 @@ import {
   formatDayLong,
   formatDayTitle,
   isToday,
+  isSameDay,
   startOfDayIso,
 } from '../utils/dates';
 import { usePedometer } from '../hooks/usePedometer';
@@ -71,6 +77,8 @@ export default function DashboardScreen() {
   const [showCoach, setShowCoach] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [sensorOn, setSensorOn] = useState(false);
+  const [healthDays, setHealthDays] = useState([]);
+  const [achievements, setAchievements] = useState([]);
 
   const activityRef = useRef(activity);
   const saveTimer = useRef(null);
@@ -80,7 +88,7 @@ export default function DashboardScreen() {
     setError(null);
     try {
       const day = dayKey(selectedDay);
-      const [loadedUser, foodRows, weightRows, workoutRows, daily] = await Promise.all([
+      const [loadedUser, foodRows, weightRows, workoutRows, daily, health, earned] = await Promise.all([
         getUser(),
         listFoodEntries({
           desde: startOfDayIso(selectedDay),
@@ -89,11 +97,15 @@ export default function DashboardScreen() {
         listWeightEntries(),
         listWorkoutSessions(),
         getDailyActivity(day),
+        getHealthConnectWeeklySummary(7).catch(() => ({ days: [] })),
+        listAchievements().catch(() => []),
       ]);
       setUser(loadedUser);
       setEntries(foodRows);
       setWeights(weightRows);
       setSessions(workoutRows);
+      setHealthDays(health?.days || []);
+      setAchievements(earned || []);
       const nextActivity = {
         day,
         steps: Number(daily?.steps) || 0,
@@ -215,6 +227,25 @@ export default function DashboardScreen() {
   const percentage = objetivo > 0 ? Math.min(consumed / objetivo, 1) : 0;
   const steps = Number(activity.steps) || 0;
   const water = Number(activity.water) || 0;
+  const dailyStreak = (() => {
+    let count = 0;
+    for (const row of [...healthDays].reverse()) {
+      if ((Number(row.steps) || 0) >= stepGoal) count += 1;
+      else break;
+    }
+    return count;
+  })();
+  useEffect(() => {
+    const milestones = [
+      { key: 'steps_goal_1', days: 1 },
+      { key: 'steps_streak_3', days: 3 },
+      { key: 'steps_streak_7', days: 7 },
+    ].filter((badge) => dailyStreak >= badge.days && !achievements.some((item) => item.achievement_key === badge.key));
+    if (!milestones.length) return;
+    Promise.all(milestones.map((badge) => unlockAchievement(badge.key, { streak: dailyStreak })))
+      .then((rows) => setAchievements(rows[rows.length - 1] || achievements))
+      .catch(() => {});
+  }, [dailyStreak, achievements]);
   const when = isToday(selectedDay) ? 'today' : 'that day';
 
   // ---- Alerts ----
@@ -338,20 +369,20 @@ export default function DashboardScreen() {
     waterGlasses: water,
     waterGoalGlasses: waterGoal,
     steps,
+    estimatedStepCaloriesBurned: Math.round(steps * 0.04),
+    estimatedWorkoutCaloriesBurned: Math.round((sessions.filter((s) => isSameDay(s.started_at, selectedDay)).reduce((sum, s) => sum + (Number(s.duration_min) || 0), 0) * (Number(latestWeight?.peso_kg) || 70) * 5) / 60),
     stepGoal,
     goalType: user?.goal_type ?? 'maintain',
     currentWeightKg: latestWeight?.peso_kg ?? 'unknown',
     goalWeightKg: user?.meta_peso_kg ?? 'not set',
     workoutsThisWeek: weekly.count,
     trainingStreakDays: streak,
+    healthConnectLast7Days: healthDays,
+    request: 'Create a personalized 20-minute equipment-free home workout and a vegetarian meal plan for today. Use the 7-day Health Connect trends and profile goals; include practical exercises with timings and meals with estimated calories/protein. Label estimates and avoid medical claims.',
   };
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
+    return <DashboardSkeleton />;
   }
 
   const goNextDay = () => {
@@ -369,6 +400,9 @@ export default function DashboardScreen() {
           : null;
 
   const canUseSensor = !IS_WEB && isToday(selectedDay);
+  const stepCaloriesBurned = Math.round(steps * 0.04);
+  const workoutMinutesToday = sessions.filter((s) => isSameDay(s.started_at, selectedDay)).reduce((sum, s) => sum + (Number(s.duration_min) || 0), 0);
+  const workoutCaloriesBurned = Math.round(workoutMinutesToday * 5 * (Number(latestWeight?.peso_kg) || 70) / 60);
 
   const header = (
     <>
@@ -569,6 +603,13 @@ export default function DashboardScreen() {
       </View>
       {sensorHint ? <Text style={styles.sensorHint}>{sensorHint}</Text> : null}
 
+      <View style={styles.burnedRow}>
+        <Ionicons name="flame-outline" size={18} color={colors.warning} />
+        <Text style={styles.burnedText}>Estimated burn</Text>
+        <Text style={styles.burnedValue}>{formatNumber(stepCaloriesBurned + workoutCaloriesBurned)} kcal</Text>
+      </View>
+      <Text style={styles.burnedHint}>Steps: {formatNumber(stepCaloriesBurned)} kcal · Exercise: {formatNumber(workoutCaloriesBurned)} kcal (estimate)</Text>
+
       <View style={styles.divider} />
 
       <View style={styles.activityRow}>
@@ -753,6 +794,7 @@ export default function DashboardScreen() {
                   {weightCard}
                   <View style={{ height: spacing.md }} />
                   {trainingCard}
+                  <HealthInsights days={healthDays} stepsGoal={stepGoal} caloriesGoal={300} water={water} waterGoal={waterGoal} streak={dailyStreak} achievements={achievements} />
                 </View>
               </View>
             </>
@@ -768,6 +810,7 @@ export default function DashboardScreen() {
               {weightCard}
               <View style={{ height: spacing.md }} />
               {trainingCard}
+              <HealthInsights days={healthDays} stepsGoal={stepGoal} caloriesGoal={300} water={water} waterGoal={waterGoal} streak={dailyStreak} achievements={achievements} />
             </>
           )}
 
@@ -971,6 +1014,10 @@ const styles = StyleSheet.create({
 
   // Activity
   activityRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  burnedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm },
+  burnedText: { flex: 1, fontSize: font.sm, color: colors.textMuted },
+  burnedValue: { fontSize: font.md, fontWeight: '800', color: colors.text },
+  burnedHint: { fontSize: font.xs, color: colors.textMuted, marginTop: spacing.xs },
   activityIcon: {
     width: 40,
     height: 40,

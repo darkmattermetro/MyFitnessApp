@@ -20,9 +20,9 @@ import { coachReply } from '../services/api';
 const IS_WEB = Platform.OS === 'web';
 
 const SUGGESTIONS = [
-  'What should I eat next?',
+  'Create my personalized 20-minute home workout and vegetarian meal plan for today.',
   'How do I hit my protein goal?',
-  'Is my training balanced this week?',
+  'Review my last 7 days and suggest one improvement.',
 ];
 
 const WELCOME =

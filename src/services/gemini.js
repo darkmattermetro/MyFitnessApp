@@ -45,6 +45,7 @@ const PROMPT_COACH = `You are the in-app coach of OpenFit, a fitness and nutriti
 Answer in English, warmly and directly. Keep replies short: 1-3 short paragraphs, or a short bullet list when it helps.
 Use the user snapshot when it is relevant, but never invent numbers that are not in it.
 Give practical, safe, sustainable advice about food, training, hydration and habits.
+Proactively help the user make progress toward the calorie, macro, step, water, weight and training goals included in the snapshot. Give one or two concrete next actions, explain tradeoffs briefly, and adapt ideas to what they have already logged today. Never shame the user or recommend extreme restriction.
 If the question is medical, say you cannot diagnose and suggest a qualified professional.
 Never mention being an AI model, and never ask the user to paste their API key.
 
@@ -76,7 +77,7 @@ function bodyParts(prompt, imagen) {
   return parts;
 }
 
-async function callGemini(key, prompt, imagen) {
+async function callGemini(key, prompt, imagen, jsonMode = false) {
   const res = await fetch(GEMINI_URL, {
     method: 'POST',
     headers: {
@@ -85,17 +86,28 @@ async function callGemini(key, prompt, imagen) {
     },
     body: JSON.stringify({
       contents: [{ parts: bodyParts(prompt, imagen) }],
+      ...(jsonMode ? { generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } } : {}),
     }),
   });
   if (!res.ok) {
-    throw new Error('The Gemini API returned an error. Check your key.');
+    let detail = '';
+    try {
+      detail = (await res.json())?.error?.message || '';
+    } catch {}
+    if (res.status === 400) throw new Error(detail || 'Gemini rejected the request. Check the API key and meal description.');
+    if (res.status === 403) throw new Error('Gemini access is blocked for this key. Check that the Gemini API is enabled and the key is valid.');
+    if (res.status === 429) throw new Error('Gemini is temporarily rate limited. Wait a moment and try again.');
+    throw new Error(detail || `Gemini request failed (${res.status}). Try again.`);
   }
   const json = await res.json();
   return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
 
 function limpiarJson(texto) {
-  return texto.replace(/```json|```/g, '').trim();
+  const clean = String(texto || '').replace(/```(?:json)?/gi, '').trim();
+  const start = clean.indexOf('{');
+  const end = clean.lastIndexOf('}');
+  return start >= 0 && end > start ? clean.slice(start, end + 1) : clean;
 }
 
 function toNumber(value) {
@@ -134,9 +146,17 @@ export async function parseFoodConKey(apiKey, prefs, texto) {
     '{{PREFERENCES}}',
     preferenciasParaPrompt(prefs),
   ).replace('{{DESCRIPTION}}', texto);
-  const text = await callGemini(apiKey, prompt);
-  const parsed = JSON.parse(limpiarJson(text));
+  const text = await callGemini(apiKey, prompt, undefined, true);
+  let parsed;
+  try {
+    parsed = JSON.parse(limpiarJson(text));
+  } catch {
+    throw new Error('Gemini could not format this meal. Try a shorter description with portions, such as “2 eggs and 1 slice of toast”.');
+  }
   const items = normalizeItems(parsed.items);
+  if (!items.length || items.some((item) => !item.name || item.kcal < 0)) {
+    throw new Error('No food items with usable nutrition estimates were returned. Add a portion or try describing each food separately.');
+  }
   const total_kcal = items.reduce((s, i) => s + i.kcal, 0);
   return { items, total_kcal };
 }
@@ -171,7 +191,8 @@ function contextToText(context) {
       const label = key
         .replace(/([A-Z])/g, ' $1')
         .replace(/^./, (c) => c.toUpperCase());
-      return `- ${label}: ${value}`;
+      const readable = typeof value === 'object' ? JSON.stringify(value) : value;
+      return `- ${label}: ${readable}`;
     });
   return rows.length ? rows.join('\n') : '- No data available.';
 }

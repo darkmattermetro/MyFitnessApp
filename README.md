@@ -105,13 +105,19 @@ If the page reports that the Google web client ID is missing, the client ID is n
 
 Both platforms are pre-configured in this repo: `vercel.json` and `netlify.toml` already set the build command, the `dist/` output and Node 20. Import the repository and deploy; add the Supabase variables only if you want cloud accounts instead of demo mode.
 
+## Updating installed apps
+
+Web changes deploy through Vercel as usual. For compatible JavaScript and styling updates to an already-installed Expo app, publish an EAS Update with `npm run update:preview` or `npm run update:production` after reviewing the release. Updates must match the installed native runtime and channel. Changes to native packages, permissions, app configuration, or native code still require a new APK/AAB build. See [Expo EAS Update runtime versions](https://docs.expo.dev/eas-update/runtime-versions/) and [deployment](https://docs.expo.dev/eas-update/deployment/).
+
 ## Android Health Connect
 
-Health Connect is available only in the Android app on supported devices (Android 9 or later with Google Play services). Open **Profile → Health Connect → Connect Health Connect** and allow OpenFit to read steps. OpenFit requests read access to step totals only. It imports up to the last 7 days when the profile opens (at most once per day), and you can start a sync any time. Make sure Google Fit, Fitbit, or another step source is writing steps into Health Connect; OpenFit reads the combined daily total from Health Connect.
+Health Connect is available only in the Android app on supported devices (Android 9 or later with Google Play services). Open **Profile → Health Connect** and allow OpenFit to read steps, active calories, and sleep. The dashboard summarizes those values by day for the last week. Make sure your tracker is writing data into Health Connect.
 
 Health Connect uses native Android code, so Expo Go and the Vercel web app cannot access it. After adding or changing this integration, create and install a new Android development or production build (for example, `npm run build:apk`). The app config includes the Health Connect plugin, step read permission, and the Android minimum SDK requirement. Users can manage or revoke access from the Health Connect permissions screen.
 
 For Android builds to show account login and sync to the same Supabase database as the website, add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` to the matching EAS environment (`preview` for `npm run build:apk`, `production` for `npm run build:android`). These build-time variables are embedded into the app. Vercel environment variables are separate and are not automatically copied to EAS. Without the Supabase values, the Android app intentionally opens in demo mode and keeps data on the device.
+
+The dashboard uses `react-native-gifted-charts` for weekly Health Connect charts and Reanimated for rings and loading skeletons. Run `npm run db:migrate` (or apply `supabase/migrations/0007_gamification.sql` in the Supabase SQL editor) to enable cloud achievement badges.
 
 ## Demo mode
 

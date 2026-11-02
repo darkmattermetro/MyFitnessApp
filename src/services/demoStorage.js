@@ -16,6 +16,7 @@ const KEYS = {
   workouts: 'demo:workout_sessions',
   activity: 'demo:daily_activity',
   seeded: 'demo:seeded',
+  achievements: 'demo:achievements',
 };
 
 export const DEMO_USER_ID = 'demo-user';
@@ -368,6 +369,18 @@ export async function demoGetActivity() {
 
 export async function demoSaveActivity(rows) {
   await write(storage, KEYS.activity, rows);
+}
+
+export async function demoGetAchievements() {
+  return read(storage, KEYS.achievements, []);
+}
+
+export async function demoUnlockAchievement(key, metadata = {}) {
+  const current = await demoGetAchievements();
+  if (current.some((item) => item.achievement_key === key)) return current;
+  const next = [...current, { achievement_key: key, unlocked_at: new Date().toISOString(), metadata }];
+  await write(storage, KEYS.achievements, next);
+  return next;
 }
 
 export function nextId(prefix) {

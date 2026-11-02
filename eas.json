@@ -16,6 +16,7 @@
       }
     },
     "production": {
+      "channel": "production",
       "environment": "production",
       "node": "22.13.0"
     }

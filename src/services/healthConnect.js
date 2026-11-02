@@ -1,7 +1,7 @@
 // Health Connect is Android-only. The Android implementation is resolved from
 // healthConnect.android.js; web and iOS show an unavailable provider state.
 export async function getHealthConnectStatus() {
-  return { available: false, updateRequired: false, permissionGranted: false };
+  return { available: false, updateRequired: false, permissionGranted: false, metricsGranted: false };
 }
 
 export async function requestHealthConnectStepPermission() {
@@ -16,4 +16,8 @@ export async function getHealthConnectLastSync() {
 
 export async function syncHealthConnectSteps() {
   throw new Error('Health Connect is available in the Android app only.');
+}
+
+export async function getHealthConnectWeeklySummary() {
+  return { available: false, days: [] };
 }
