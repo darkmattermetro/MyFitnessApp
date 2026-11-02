@@ -1,4 +1,4 @@
-// Google Fit integration: OAuth (expo-auth-session) + step-count sync.
+// Google Fit integration: OAuth (expo-auth-session) + daily fitness sync.
 //
 // Uses the Google Fit REST API, so it works in Expo Go and on web without
 // native code. The user must create OAuth client IDs in Google Cloud Console
@@ -17,6 +17,14 @@ export const SCOPES = ['https://www.googleapis.com/auth/fitness.activity.read'];
 
 const TOKENS_KEY = 'google_fit_tokens';
 const LAST_SYNC_KEY = 'google_fit_last_sync';
+const ACTIVITY_SUMMARY_KEY = 'google_fit_activity_summary';
+const ACTIVITY_DATA_TYPES = [
+  'com.google.step_count.delta',
+  'com.google.distance.delta',
+  'com.google.calories.expended',
+  'com.google.active_minutes',
+  'com.google.heart_minutes',
+];
 
 const WEB_CLIENT_ID = String(process.env.EXPO_PUBLIC_GOOGLE_FIT_WEB_CLIENT_ID || '').trim();
 const ANDROID_CLIENT_ID = String(process.env.EXPO_PUBLIC_GOOGLE_FIT_ANDROID_CLIENT_ID || '').trim();
@@ -64,10 +72,22 @@ export async function saveTokens(tokens) {
 export async function clearTokens() {
   await secureStorage.removeItem(TOKENS_KEY);
   await secureStorage.removeItem(LAST_SYNC_KEY);
+  await secureStorage.removeItem(ACTIVITY_SUMMARY_KEY);
 }
 
 export async function getLastSync() {
   return secureStorage.getItem(LAST_SYNC_KEY);
+}
+
+export async function getActivitySummary() {
+  const raw = await secureStorage.getItem(ACTIVITY_SUMMARY_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 async function setLastSync(iso) {
@@ -121,9 +141,9 @@ export async function getAccessToken() {
 }
 
 // Fetch daily step counts from Google Fit for [start, end] (Date objects).
-export async function fetchSteps(accessToken, start, end) {
+export async function fetchFitnessActivity(accessToken, start, end) {
   const body = {
-    aggregateBy: [{ dataTypeName: 'com.google.step_count.delta' }],
+    aggregateBy: ACTIVITY_DATA_TYPES.map((dataTypeName) => ({ dataTypeName })),
     bucketByTime: { durationMillis: 86400000 },
     startTimeMillis: start.getTime(),
     endTimeMillis: end.getTime(),
@@ -146,24 +166,25 @@ export async function fetchSteps(accessToken, start, end) {
   }
   const json = await res.json();
   const buckets = Array.isArray(json?.bucket) ? json.bucket : [];
-  const out = [];
-  for (const b of buckets) {
+  return buckets.map((b) => {
     const ms = Number(b.startTimeMillis) || 0;
     const d = new Date(ms);
     const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
       d.getDate(),
     ).padStart(2, '0')}`;
-    let steps = 0;
-    for (const ds of b.dataset || []) {
-      for (const pt of ds.point || []) {
-        for (const v of pt.value || []) {
-          steps += Number(v.intVal) || 0;
-        }
-      }
-    }
-    out.push({ day, steps });
-  }
-  return out;
+    const sums = (b.dataset || []).map((ds) => (ds.point || []).reduce((total, point) => {
+      const value = point.value?.[0] || {};
+      return total + (Number(value.intVal ?? value.fpVal) || 0);
+    }, 0));
+    return {
+      day,
+      steps: Math.round(sums[0] || 0),
+      distanceMeters: Math.round(sums[1] || 0),
+      caloriesBurned: Math.round(sums[2] || 0),
+      moveMinutes: Math.round((sums[3] || 0) / 60_000),
+      heartPoints: Math.round(sums[4] || 0),
+    };
+  });
 }
 
 // Sync the last `days` days of steps into daily_activity.
@@ -182,7 +203,7 @@ export async function syncSteps(days = 7) {
 
   let imported;
   try {
-    imported = await fetchSteps(token, start, end);
+    imported = await fetchFitnessActivity(token, start, end);
   } catch (error) {
     if (/Google Fit error 401/i.test(error.message || '')) {
       await clearTokens();
@@ -194,6 +215,7 @@ export async function syncSteps(days = 7) {
     throw error;
   }
   let updated = 0;
+  await secureStorage.setItem(ACTIVITY_SUMMARY_KEY, JSON.stringify(imported));
   for (const { day, steps } of imported) {
     if (!steps) continue;
     const current = await getDailyActivity(day);
@@ -205,5 +227,12 @@ export async function syncSteps(days = 7) {
   }
   const now = new Date().toISOString();
   await setLastSync(now);
-  return { imported: imported.filter((row) => row.steps > 0).length, updated, lastSync: now };
+  return {
+    imported: imported.filter((row) => (
+      row.steps || row.distanceMeters || row.caloriesBurned || row.moveMinutes || row.heartPoints
+    )).length,
+    updated,
+    activity: imported,
+    lastSync: now,
+  };
 }

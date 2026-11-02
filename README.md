@@ -11,7 +11,7 @@ A personal fitness app for tracking meals, weight and gym workouts. One codebase
 - **Personal records**: your heaviest set for each exercise, plus volume, sets and minutes per week.
 - **Weight**: entries with date and time plus a trend chart.
 - **Profile**: calorie goal, weight goal, personal data, BMI/calorie calculator and your own Gemini API key (BYOK).
-- **Step imports**: Android reads daily steps from Health Connect; web and iOS retain the Google Fit connection where its OAuth setup is available.
+- **Fitness imports**: Android reads daily steps from Health Connect; Google Fit can sync steps, distance, total calories burned, Move Minutes and Heart Points where its OAuth setup is available.
 
 AI nutrition values are estimates. When a user invokes Gemini, the app sends the relevant meal text or photo, saved food preferences, or coach context and recent messages to Google. In account mode, the Gemini key is stored in the user's Supabase profile; in demo mode, it is stored in that browser.
 
@@ -99,7 +99,7 @@ On Vercel:
 5. In Google Cloud Console, enable the Fitness API for an eligible project and create a Web OAuth client. Add your production and preview site origins under **Authorized JavaScript origins**, and add the exact site origin as an authorized redirect URI. The origin must match the deployed site, including `https` and any custom domain.
 6. Add the same value to `.env` for local web development. The Android and iOS client IDs are separate and are only used by native builds.
 
-If the page reports that the Google web client ID is missing, the client ID is not present in the Vercel build. Add it to the correct Vercel project/environment and redeploy. If Google returns no step entries, confirm the signed-in Google account is the one receiving Fit data, that the Fitness API is enabled, and that the account has granted the activity read scope. The Profile card syncs at most once per day when opened and can also sync on demand.
+If the page reports that the Google web client ID is missing, the client ID is not present in the Vercel build. Add it to the correct Vercel project/environment and redeploy. If Google returns no activity data, confirm the signed-in Google account is the one receiving Fit data, that the Fitness API is enabled, and that the account has granted the activity read scope. The Profile card syncs the last 7 days at most once per day when opened and can also sync on demand. It displays steps, distance, calories burned, Move Minutes and Heart Points. These use the activity read permission already requested by the app; additional categories such as sleep, heart rate, nutrition and body measurements need separate user consent and should only be added with matching app features.
 
 **Google Fit platform status:** Google has announced that the Google Fit APIs, including its REST API, will be deprecated in 2026, and new projects have been unable to sign up since May 1, 2024. Google recommends the Google Health API for cloud integrations or Health Connect for Android-first step tracking. This legacy integration may stop returning data as Google retires the API; see the [official Google Fit overview](https://developers.google.com/fit/overview) before relying on it for a new production integration.
 
