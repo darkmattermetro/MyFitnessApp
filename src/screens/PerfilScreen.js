@@ -26,6 +26,7 @@ import {
 import { useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
 import GoogleFitCard from '../components/GoogleFitCard';
+import HealthConnectCard from '../components/HealthConnectCard';
 import { colors, font, spacing, radius } from '../theme/colors';
 import {
   getUser,
@@ -469,7 +470,7 @@ export default function PerfilScreen() {
           </GridItem>
         </Grid>
 
-        <GoogleFitCard />
+        {Platform.OS === 'android' ? <HealthConnectCard /> : <GoogleFitCard />}
 
         <Button
           variant="secondary"

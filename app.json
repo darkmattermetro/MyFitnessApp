@@ -16,7 +16,8 @@
       "package": "com.tucas.fit",
       "versionCode": 1,
       "permissions": [
-        "ACTIVITY_RECOGNITION"
+        "ACTIVITY_RECOGNITION",
+        "android.permission.health.READ_STEPS"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#044134",
@@ -52,7 +53,16 @@
           "motionPermission": "OpenFit uses your phone's motion sensor to count your steps."
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "react-native-health-connect",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

@@ -11,7 +11,7 @@ A personal fitness app for tracking meals, weight and gym workouts. One codebase
 - **Personal records**: your heaviest set for each exercise, plus volume, sets and minutes per week.
 - **Weight**: entries with date and time plus a trend chart.
 - **Profile**: calorie goal, weight goal, personal data, BMI/calorie calculator and your own Gemini API key (BYOK).
-- **Step imports**: Google Fit step history can be synced into daily activity when its OAuth setup is available.
+- **Step imports**: Android reads daily steps from Health Connect; web and iOS retain the Google Fit connection where its OAuth setup is available.
 
 AI nutrition values are estimates. When a user invokes Gemini, the app sends the relevant meal text or photo, saved food preferences, or coach context and recent messages to Google. In account mode, the Gemini key is stored in the user's Supabase profile; in demo mode, it is stored in that browser.
 
@@ -104,6 +104,12 @@ If the page reports that the Google web client ID is missing, the client ID is n
 **Google Fit platform status:** Google has announced that the Google Fit APIs, including its REST API, will be deprecated in 2026, and new projects have been unable to sign up since May 1, 2024. Google recommends the Google Health API for cloud integrations or Health Connect for Android-first step tracking. This legacy integration may stop returning data as Google retires the API; see the [official Google Fit overview](https://developers.google.com/fit/overview) before relying on it for a new production integration.
 
 Both platforms are pre-configured in this repo: `vercel.json` and `netlify.toml` already set the build command, the `dist/` output and Node 20. Import the repository and deploy; add the Supabase variables only if you want cloud accounts instead of demo mode.
+
+## Android Health Connect
+
+Health Connect is available only in the Android app on supported devices (Android 9 or later with Google Play services). Open **Profile → Health Connect → Connect Health Connect** and allow OpenFit to read steps. OpenFit requests read access to step totals only. It imports up to the last 7 days when the profile opens (at most once per day), and you can start a sync any time. Make sure Google Fit, Fitbit, or another step source is writing steps into Health Connect; OpenFit reads the combined daily total from Health Connect.
+
+Health Connect uses native Android code, so Expo Go and the Vercel web app cannot access it. After adding or changing this integration, create and install a new Android development or production build (for example, `npm run build:apk`). The app config includes the Health Connect plugin, step read permission, and the Android minimum SDK requirement. Users can manage or revoke access from the Health Connect permissions screen.
 
 ## Demo mode
 
