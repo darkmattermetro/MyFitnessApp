@@ -15,7 +15,7 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export default function HealthConnectCard() {
+export default function HealthConnectCard({ onOpenPrivacy }) {
   const { showToast } = useToast();
   const [status, setStatus] = useState(null);
   const [lastSync, setLastSync] = useState(null);
@@ -136,7 +136,7 @@ export default function HealthConnectCard() {
             Read daily steps, active calories, and sleep totals from Health Connect for your charts and AI coach. You choose which read permissions to grant. Sync runs when Profile opens at most once a day, or you can sync now.
           </Text>
           {lastSync ? <Text style={styles.meta}>Last sync: {new Date(lastSync).toLocaleString()}</Text> : null}
-          <Text style={styles.meta}>OpenFit saves the imported daily total to your activity log. Higher step counts already in OpenFit are kept.</Text>
+          <Text style={styles.meta}>Provider totals replace the last provider total. Phone sensor counts and manual corrections are stored separately so syncing will not double-count steps.</Text>
           <View style={styles.actions}>
             {!status.metricsGranted ? (
               <Button variant="primary" icon="link-outline" onPress={connect} loading={connecting} disabled={connecting || checking}>
@@ -155,6 +155,11 @@ export default function HealthConnectCard() {
           </View>
         </>
       )}
+      {onOpenPrivacy ? (
+        <Button variant="ghost" icon="shield-checkmark-outline" onPress={onOpenPrivacy}>
+          Health data privacy details
+        </Button>
+      ) : null}
     </Card>
   );
 }

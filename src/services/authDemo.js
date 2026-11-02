@@ -35,6 +35,10 @@ export async function signOut() {
   await resetDemo();
 }
 
+export async function deleteAccount() {
+  await resetDemo();
+}
+
 export async function getSession() {
   await seedDemoIfNeeded();
   return demoSession;

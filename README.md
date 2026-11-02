@@ -1,138 +1,86 @@
 # OpenFit
 
-A personal fitness app for tracking meals, weight and gym workouts. One codebase for Android, iOS and web (React Native + Expo).
+OpenFit is an Expo React Native fitness tracker for Android, iOS, and web. It combines meal and workout logs, weight tracking, Health Connect activity, and optional AI assistance.
 
-## Features
+## Current features
 
-- **AI meal logging**: describe what you ate in everyday language ("two scrambled eggs and a coffee with milk") or upload a photo, and the AI turns it into nutritional data (kcal, protein, fat, carbs) before you save it.
-- **Today dashboard**: calories and macros for the day vs. your goals, this week's training summary, and your latest weight.
-- **Meal history**: meals grouped by day, with editing and deletion.
-- **Workout logging**: start an empty session or a template (push, pull, legs, upper, full body, home). Log weight and reps per set, use the rest timer, add custom exercises, finish or discard a session, and review past workouts.
-- **Personal records**: your heaviest set for each exercise, plus volume, sets and minutes per week.
-- **Weight**: entries with date and time plus a trend chart.
-- **Profile**: calorie goal, weight goal, personal data, BMI/calorie calculator and your own Gemini API key (BYOK).
-- **Fitness imports**: Android reads daily steps from Health Connect; Google Fit can sync steps, distance, total calories burned, Move Minutes and Heart Points where its OAuth setup is available.
+- **Dashboard:** dark interface, animated step/calorie/hydration rings, loading skeletons, weekly activity charts, and source-aware step totals.
+- **Meals:** text logging or photo capture/gallery selection; AI nutrition estimates are reviewed and editable before saving. Values are validated and AI estimate warnings are shown.
+- **Workouts:** workout templates and exercise logging, plus an AI home-workout coach.
+- **Health Connect:** Android reads granted steps, active calories, and sleep. Web cannot access Health Connect. Google Fit web integration remains legacy and depends on OAuth configuration; it is not the source used by the Android Health Connect bridge.
+- **Privacy:** in-app policy, AI consent before the first AI request, device-secure BYOK storage on native, export, and account deletion flow.
+- **Shift reminders:** import a CSV roster using `sign_off,next_sign_on` columns. A reminder is scheduled 1 hour after sign-off only when the next sign-on is at least 12 hours later.
+- **Calorie suggestion:** authenticated server-side Gemini review can propose a small next-day adjustment for a weight-loss goal. It is stored for review; the user must confirm before their calorie goal changes.
+- **Gamification:** achievement badges and daily activity tracking.
 
-AI nutrition values are estimates. When a user invokes Gemini, the app sends the relevant meal text or photo, saved food preferences, or coach context and recent messages to Google. In account mode, the Gemini key is stored in the user's Supabase profile; in demo mode, it is stored in that browser.
+AI nutrition and coaching are estimates. Basic meal, activity, and workout logging works without AI.
 
-## Stack
+## Stack and requirements
 
-- **Frontend**: React Native with Expo SDK 54, react-native-web (web), React Navigation.
-- **Backend**: Supabase (Auth + PostgreSQL with Row Level Security).
-- **AI**: Gemini API, called directly from the app with the user's own API key.
+- Expo SDK 58, React Native 0.88, React Navigation 7, Supabase, Reanimated, and `react-native-gifted-charts`.
+- Node.js **22.13.0 or newer** (the installed Expo SDK 58/RN toolchain requires Node 22).
+- npm, Android Studio/Android SDK for local native builds, and an Expo account for EAS cloud builds.
 
-## Requirements
+## Local setup
 
-- Node.js 18+
-- A [Supabase](https://supabase.com) account (for cloud mode)
-- Expo Go on your phone (optional, for development on a device)
+1. Install dependencies with `npm ci`.
+2. Copy `.env.example` to `.env` and set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` for account/cloud mode. Without these, the app uses local demo data.
+3. Start the app with `npm start`, or use `npm run web` for the browser. Health Connect requires a custom Android build; Expo Go and the web build cannot read it.
+4. Add an optional Gemini key in Profile for device-side AI features. The app requests consent before sending relevant food text/images or coaching context to Google Gemini. On native, BYOK is stored using SecureStore; on web it uses browser storage. The AI provider's own quotas and billing apply. Rotate or remove the key from Profile. Existing keys in the legacy Supabase profile column are copied to the device on profile load and cleared from that column after migration 0009 is installed.
 
-## Setup
+## Database and backend setup
 
-1. Install dependencies:
+Migrations `0008`–`0012` add atomic activity updates, stricter ownership policies and key migration, step provenance, calorie suggestion storage, and idempotent food/workout submissions. For an existing database, apply only migrations not already applied, in numeric order. This repository's `npm run db:migrate` script can apply pending files if its configured Supabase access token/project details are present; otherwise use the Supabase SQL Editor. **Review the SQL against your project before applying it.** No production database changes are applied by this repository automatically during builds.
 
-   ```bash
-   npm install
-   ```
+Deploy the following functions yourself after applying the migrations:
 
-2. Create your `.env` file from the template:
+- `delete-account`: authenticates the caller, removes only that user's records, removes files in that user's storage folder, then deletes the Auth account. Set the function's `SUPABASE_SERVICE_ROLE_KEY` server secret. Never add it to an `EXPO_PUBLIC_` variable or client build.
+- `suggest-next-day-calories`: reads only the authenticated user's profile and activity, and calls Gemini using the server secret `GEMINI_API_KEY`. Configure the Supabase function secrets `GEMINI_API_KEY` and normal Supabase function environment. The Edge Function uses the service-role key only server-side for its private suggestion cache. The function proposes a bounded change; the user confirms it in Profile.
 
-   ```bash
-   copy .env.example .env
-   ```
+Example after reviewing and configuring the Supabase CLI project:
 
-   Fill in the values from your Supabase project (Project Settings > API):
-   - `EXPO_PUBLIC_SUPABASE_URL`
-   - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
-
-   Without these values the app automatically runs in demo mode with local data.
-
-3. Apply the database migrations (requires a Supabase access token):
-
-   ```bash
-   setx SUPABASE_ACCESS_TOKEN "sbp_your_token"
-   node scripts/run-migration.js
-   ```
-
-   Or paste the SQL files from `supabase/migrations/` into the Supabase SQL Editor, in order. `0005_workouts.sql` creates the `workout_sessions` table and is required for workout logging in cloud mode.
-
-## Scripts
-
-| Command | Description |
-|---|---|
-| `npm start` | Start the Expo dev server |
-| `npm run web` | Open the app in the browser |
-| `npm run android` | Run on Android (Expo Go / emulator) |
-| `npm run ios` | Run on iOS (Expo Go / simulator) |
-| `npm run export:web` | Build the static web app (`dist/`) |
-| `npm run logo` | Regenerate app icons from `assets/logo2.svg` |
-| `npm run build:apk` | EAS preview APK build |
-| `npm run build:android` | EAS production Android build |
-| `npm run build:ios` | EAS production iOS build |
-
-## Structure
-
-```
-src/
-  screens/       Dashboard, Food, History, Workout, Weight, Profile, Auth
-  components/    Shared UI, chart, dialogs, exercise picker, etc.
-  services/      Supabase client, auth, API and local storage
-  data/          Exercise catalog and workout templates
-  theme/         Colors and global styles
-  navigation/    Bottom-tab navigation
-  utils/         Nutrition and workout helpers
-supabase/
-  migrations/    SQL for schema, auth (RLS) and workouts
-scripts/         Utilities (migrations, icon generation)
+```bash
+supabase functions deploy delete-account
+supabase functions deploy suggest-next-day-calories
+supabase secrets set GEMINI_API_KEY=your_server_key
 ```
 
-## Web deployment
+Do not deploy the functions or migrations until they are reviewed for your production project. The in-app BYOK key is separate from the server-side key needed by the calorie suggestion function.
 
-The web build is a static app generated with `expo export --platform web`, ready for static hosting (Vercel, Netlify, etc.).
+## Web hosting
 
-On Vercel:
+Build with `npm run export:web`; the static output is `dist/`. On Vercel, set the build command to `npm run export:web`, output directory to `dist`, and add `EXPO_PUBLIC_SUPABASE_URL` plus `EXPO_PUBLIC_SUPABASE_ANON_KEY` to each desired environment. `EXPO_PUBLIC_` variables are bundled at build time. Netlify is also configured to publish `dist/`. Add the deployed URLs to Supabase Auth redirect allow-lists when using email authentication.
 
-1. Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` as environment variables.
-2. Use `npm run export:web` as the build command and `dist/` as the output directory.
-3. Add your domain URL to the Auth redirect allow-list in Supabase.
-4. To show Google Fit step data, add `EXPO_PUBLIC_GOOGLE_FIT_WEB_CLIENT_ID` in **Vercel → Project Settings → Environment Variables**, then redeploy. `EXPO_PUBLIC_` values are compiled into the site at build time.
-5. In Google Cloud Console, enable the Fitness API for an eligible project and create a Web OAuth client. Add your production and preview site origins under **Authorized JavaScript origins**, and add the exact site origin as an authorized redirect URI. The origin must match the deployed site, including `https` and any custom domain.
-6. Add the same value to `.env` for local web development. The Android and iOS client IDs are separate and are only used by native builds.
+The Google Fit OAuth settings in `src/config.js` are legacy web-only support. No cloud “Google Health API v4” OAuth endpoint is configured. Android activity data comes from Health Connect on-device and syncs to Supabase when configured.
 
-If the page reports that the Google web client ID is missing, the client ID is not present in the Vercel build. Add it to the correct Vercel project/environment and redeploy. If Google returns no activity data, confirm the signed-in Google account is the one receiving Fit data, that the Fitness API is enabled, and that the account has granted the activity read scope. The Profile card syncs the last 7 days at most once per day when opened and can also sync on demand. It displays steps, distance, calories burned, Move Minutes and Heart Points. These use the activity read permission already requested by the app; additional categories such as sleep, heart rate, nutrition and body measurements need separate user consent and should only be added with matching app features.
+## Android build and updates
 
-**Google Fit platform status:** Google has announced that the Google Fit APIs, including its REST API, will be deprecated in 2026, and new projects have been unable to sign up since May 1, 2024. Google recommends the Google Health API for cloud integrations or Health Connect for Android-first step tracking. This legacy integration may stop returning data as Google retires the API; see the [official Google Fit overview](https://developers.google.com/fit/overview) before relying on it for a new production integration.
+The app is at version **1.1.0** with Android `versionCode` **4**. Preview builds are internal APKs on the `preview` EAS channel and use the `preview` environment. Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` in EAS `preview` so an installed APK can sign in and sync to the same cloud account as the website. Vercel variables are separate from EAS variables.
 
-Both platforms are pre-configured in this repo: `vercel.json` and `netlify.toml` already set the build command, the `dist/` output and Node 20. Import the repository and deploy; add the Supabase variables only if you want cloud accounts instead of demo mode.
+```bash
+npx eas-cli login
+npm run build:apk
+```
 
-## Updating installed apps
+EAS produces a build URL; download the APK from that build page. The native camera, notification, Health Connect and rationale configuration requires a new native build. Later JavaScript/style changes compatible with the installed native runtime can use `npm run update:preview`; production OTA uses `npm run update:production`. Expo Updates only applies a bundle with the matching runtime version and update channel. Native modules, permissions, or native config changes need another APK.
 
-Web changes deploy through Vercel as usual. For compatible JavaScript and styling updates to an already-installed Expo app, publish an EAS Update with `npm run update:preview` or `npm run update:production` after reviewing the release. Updates must match the installed native runtime and channel. Changes to native packages, permissions, app configuration, or native code still require a new APK/AAB build. See [Expo EAS Update runtime versions](https://docs.expo.dev/eas-update/runtime-versions/) and [deployment](https://docs.expo.dev/eas-update/deployment/).
+## Checks
 
-## Android Health Connect
+- `npm test` runs regression tests for nutrition validation, step-source reconciliation, shift parsing, export redaction, serialized activity patches, and migration/backend safeguards.
+- `npm run export:web` verifies a static web bundle can be generated.
 
-Health Connect is available only in the Android app on supported devices (Android 9 or later with Google Play services). Open **Profile → Health Connect** and allow OpenFit to read steps, active calories, and sleep. The dashboard summarizes those values by day for the last week. Make sure your tracker is writing data into Health Connect.
+## Project layout
 
-Health Connect uses native Android code, so Expo Go and the Vercel web app cannot access it. After adding or changing this integration, create and install a new Android development or production build (for example, `npm run build:apk`). The app config includes the Health Connect plugin, step read permission, and the Android minimum SDK requirement. Users can manage or revoke access from the Health Connect permissions screen.
+- `src/screens/`, `src/components/`: app screens and UI.
+- `src/services/`: Supabase/demo APIs, authentication, Health Connect, Gemini, consent and notifications.
+- `src/utils/`: nutrition validation, export, shift parsing and step reconciliation.
+- `supabase/migrations/`: reviewed database changes.
+- `supabase/functions/`: deployable server functions.
+- `plugins/`: generated Android Health Connect rationale screen.
 
-For Android builds to show account login and sync to the same Supabase database as the website, add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` to the matching EAS environment (`preview` for `npm run build:apk`, `production` for `npm run build:android`). These build-time variables are embedded into the app. Vercel environment variables are separate and are not automatically copied to EAS. Without the Supabase values, the Android app intentionally opens in demo mode and keeps data on the device.
+## References
 
-The dashboard uses `react-native-gifted-charts` for weekly Health Connect charts and Reanimated for rings and loading skeletons. Run `npm run db:migrate` (or apply `supabase/migrations/0007_gamification.sql` in the Supabase SQL editor) to enable cloud achievement badges.
-
-## Demo mode
-
-With no database or Supabase setup, all data lives in the browser (localStorage) and sample data is created on first launch (meals, weights, preferences and workouts).
-
-- Enabled with `EXPO_PUBLIC_DEMO_MODE=true`, or automatically when Supabase is not configured (handy for a test deploy without variables).
-- No login: the app goes straight in with a demo user.
-- Gemini AI still works: add your API key in the Profile tab.
-- The Profile tab has a "Reset demo data" action to return to the sample data.
-- A bar at the top identifies demo mode. Demo logs stay on the device, while Gemini and Google Fit still require internet access.
-
-## Security
-
-- Migrations enable Row Level Security: each user can only access their own data.
-- The Supabase `service_role` key is never used or stored in the repo.
-- Each user's Gemini API key is stored in their own `users` row.
-- Gemini requests send the API key in an HTTP header. Meal photos/text, saved preferences, and coach context are sent to Gemini only when the corresponding AI action is used.
-- For password recovery, add the production and preview site origins to Supabase Auth's allowed redirect URLs.
+- [Expo Camera](https://docs.expo.dev/versions/latest/sdk/camera/)
+- [Expo Notifications](https://docs.expo.dev/versions/latest/sdk/notifications/)
+- [Expo EAS Update runtime versions](https://docs.expo.dev/eas-update/runtime-versions/)
+- [Android Health Connect permissions rationale](https://developer.android.com/health-and-fitness/health-connect/get-started)

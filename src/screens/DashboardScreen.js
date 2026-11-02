@@ -26,7 +26,7 @@ import {
   listFoodEntries,
   listWeightEntries,
   listWorkoutSessions,
-  saveDailyActivity,
+  patchDailyActivity,
   listAchievements,
   unlockAchievement,
 } from '../services/api';
@@ -48,6 +48,7 @@ import {
   startOfDayIso,
 } from '../utils/dates';
 import { usePedometer } from '../hooks/usePedometer';
+import { getEffectiveSteps } from '../utils/stepReconciliation.mjs';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -70,7 +71,10 @@ export default function DashboardScreen() {
   const [entries, setEntries] = useState([]);
   const [weights, setWeights] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [activity, setActivity] = useState({ day: dayKey(new Date()), steps: 0, water: 0 });
+  const [activity, setActivity] = useState({
+    day: dayKey(new Date()), steps: 0, water: 0,
+    stepsProvider: null, stepsManual: 0, stepsAdjustment: 0, stepsProviderSource: null,
+  });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -110,6 +114,10 @@ export default function DashboardScreen() {
         day,
         steps: Number(daily?.steps) || 0,
         water: Number(daily?.water) || 0,
+        stepsProvider: daily?.stepsProvider == null ? null : Number(daily.stepsProvider),
+        stepsManual: Number(daily?.stepsManual ?? daily?.steps) || 0,
+        stepsAdjustment: Number(daily?.stepsAdjustment) || 0,
+        stepsProviderSource: daily?.stepsProviderSource || null,
       };
       activityRef.current = nextActivity;
       setActivity(nextActivity);
@@ -132,17 +140,20 @@ export default function DashboardScreen() {
   }, [activity]);
 
   const queueSave = useCallback((next, immediate = false) => {
-    pendingSave.current = next;
+    const previous = pendingSave.current || {};
+    const merged = { ...previous, ...next, day: next.day || previous.day };
+    for (const field of ['stepsManualDelta', 'stepsAdjustmentDelta']) {
+      if (previous[field] != null && next[field] != null) {
+        merged[field] = Number(previous[field]) + Number(next[field]);
+      }
+    }
+    pendingSave.current = merged;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     const flush = () => {
       const payload = pendingSave.current;
       pendingSave.current = null;
       if (!payload) return;
-      saveDailyActivity({
-        day: payload.day,
-        steps: payload.steps,
-        water: payload.water,
-      }).catch((e) => {
+      patchDailyActivity(payload).catch((e) => {
         setError(e.message || 'Could not save your activity.');
       });
     };
@@ -153,19 +164,37 @@ export default function DashboardScreen() {
   const updateActivity = useCallback(
     (patch, immediate = false) => {
       const next = { ...activityRef.current, ...patch };
+      if (patch.steps != null) {
+        next.steps = Math.max(0, Math.round(Number(patch.steps) || 0));
+        next.stepsManual = next.steps;
+        next.stepsProvider = null;
+        next.stepsAdjustment = 0;
+        next.stepsProviderSource = null;
+      } else {
+        if (patch.stepsManualDelta != null) {
+          next.stepsManual = Math.max(0, (Number(next.stepsManual) || 0) + Number(patch.stepsManualDelta));
+        }
+        if (patch.stepsAdjustmentDelta != null) {
+          next.stepsAdjustment = (Number(next.stepsAdjustment) || 0) + Number(patch.stepsAdjustmentDelta);
+        }
+        if (patch.stepsProvider != null) {
+          next.stepsProvider = Number(patch.stepsProvider);
+          next.stepsProviderSource = patch.providerSource || null;
+        }
+        if (patch.stepsManualDelta != null || patch.stepsAdjustmentDelta != null || patch.stepsProvider != null) {
+          next.steps = getEffectiveSteps(next);
+        }
+      }
       activityRef.current = next;
       setActivity(next);
-      queueSave(next, immediate);
+      queueSave({ day: next.day, ...patch }, immediate);
     },
     [queueSave],
   );
 
   const addSensorSteps = useCallback(
     (delta) => {
-      const current = activityRef.current;
-      updateActivity({
-        steps: Math.max(0, (Number(current.steps) || 0) + delta),
-      });
+      updateActivity({ stepsManualDelta: delta });
     },
     [updateActivity],
   );
@@ -178,11 +207,7 @@ export default function DashboardScreen() {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       const payload = pendingSave.current;
       if (payload) {
-        saveDailyActivity({
-          day: payload.day,
-          steps: payload.steps,
-          water: payload.water,
-        }).catch(() => {});
+        patchDailyActivity(payload).catch(() => {});
       }
     },
     [],
@@ -595,13 +620,20 @@ export default function DashboardScreen() {
           <TouchableOpacity
             key={amount}
             style={styles.quickChip}
-            onPress={() => updateActivity({ steps: steps + amount })}
+            onPress={() => updateActivity({ stepsAdjustmentDelta: amount })}
           >
             <Text style={styles.quickChipText}>+{formatNumber(amount)}</Text>
           </TouchableOpacity>
         ))}
       </View>
       {sensorHint ? <Text style={styles.sensorHint}>{sensorHint}</Text> : null}
+      <Text style={styles.sensorHint}>
+        {activity.stepsProviderSource
+          ? (activity.stepsProviderSource === 'health_connect'
+            ? 'Health Connect total is used; device steps are stored separately to avoid double-counting.'
+            : 'Google Fit total is used; device steps are stored separately to avoid double-counting.')
+          : 'Steps come from this device sensor or manual adjustments.'}
+      </Text>
 
       <View style={styles.burnedRow}>
         <Ionicons name="flame-outline" size={18} color={colors.warning} />

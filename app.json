@@ -2,12 +2,12 @@
   "expo": {
     "name": "OpenFit",
     "slug": "fit",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "openfit",
-    "userInterfaceStyle": "light",
-    "backgroundColor": "#F6F7F9",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B1114",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.tucas.fit",
@@ -17,15 +17,19 @@
     },
     "android": {
       "package": "com.tucas.fit",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.ACTIVITY_RECOGNITION",
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
         "android.permission.health.READ_SLEEP"
       ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#044134",
+        "backgroundColor": "#0B1114",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -47,7 +51,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#044134",
+          "backgroundColor": "#0B1114",
           "image": "./assets/splash-icon.png",
           "imageWidth": 200
         }
@@ -59,6 +63,20 @@
         }
       ],
       "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "OpenFit uses the camera to photograph and estimate meals.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": false
+        }
+      ],
+      "./plugins/withHealthConnectRationale",
       "react-native-health-connect",
       [
         "expo-build-properties",
@@ -68,7 +86,8 @@
           }
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-sharing"
     ],
     "extra": {
       "eas": {

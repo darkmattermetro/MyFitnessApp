@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -13,12 +13,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import FoodCameraModal from '../components/FoodCameraModal';
 import { Button, Card, ChipGroup, Container, SectionLabel, Grid, GridItem, useResponsive } from '../components/ui';
 import PreferenciasSection from '../components/PreferenciasSection';
 import { useToast } from '../components/Toast';
 import { colors, font, radius, spacing } from '../theme/colors';
-import { parseFood, createFoodEntry, describeFoodImage } from '../services/api';
+import { parseFood, createFoodEntry, analyzeFoodImage } from '../services/api';
 import { MEAL_TYPES, guessMealType } from '../utils/nutricion';
+import { validateNutritionItems } from '../utils/nutritionValidation.mjs';
+import { createRequestId } from '../utils/requestId';
 
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
@@ -34,23 +37,33 @@ export default function RegistrarComidaScreen() {
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
+  const [warning, setWarning] = useState(null);
   const [imagen, setImagen] = useState(null);
+  const [cameraVisible, setCameraVisible] = useState(false);
   const [describiendo, setDescribiendo] = useState(false);
   const [mealType, setMealType] = useState(() => guessMealType(new Date()));
+  const requestIdRef = useRef(createRequestId('meal'));
+  const requestControllerRef = useRef(null);
+  const saveLockRef = useRef(false);
   const { showToast: toast } = useToast();
 
   const interpretar = async () => {
     if (!texto.trim()) return;
+    const controller = new AbortController();
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = controller;
     setLoading(true);
     setError(null);
+    setWarning(null);
     try {
-      const res = await parseFood(texto);
+      const res = await parseFood(texto, controller.signal);
       if (!res || !res.items || res.items.length === 0) {
         throw new Error('The AI could not find any food in your text.');
       }
       setItems(res.items);
+      if (res.warnings?.length) setWarning(res.warnings[0]);
     } catch (e) {
-      setError(e.message || 'Could not interpret the meal.');
+      if (!controller.signal.aborted) setError(e.message || 'Could not interpret the meal.');
     } finally {
       setLoading(false);
     }
@@ -64,41 +77,24 @@ export default function RegistrarComidaScreen() {
     if (!mimeType) mimeType = 'image/jpeg';
     setDescribiendo(true);
     setError(null);
+    setWarning(null);
+    const controller = new AbortController();
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = controller;
     try {
-      const descripcion = await describeFoodImage(base64, mimeType);
-      if (!descripcion) throw new Error('Could not describe the image.');
-      setTexto(descripcion);
-      setItems(null);
+      const result = await analyzeFoodImage(base64, mimeType, controller.signal);
+      if (!result?.items?.length) throw new Error('Could not estimate nutrition from the image.');
+      setTexto('Meal estimated from photo. Review the foods and portions before saving.');
+      setItems(result.items);
+      if (result.warnings?.length) setWarning(result.warnings[0]);
     } catch (e) {
-      setError(e.message || 'Could not describe the image.');
+      if (!controller.signal.aborted) setError(e.message || 'Could not describe the image.');
     } finally {
       setDescribiendo(false);
     }
   };
 
-  const tomarFoto = async () => {
-    const permiso = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permiso.granted) {
-      toast('You need to allow camera access to take photos.', 'error');
-      return;
-    }
-    const res = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      aspect: [4, 3],
-      quality: 0.6,
-      base64: true,
-    });
-    if (!res.canceled) {
-      const asset = res.assets[0];
-      setImagen(asset);
-      if (!asset.base64) {
-        setError('Could not read the photo. Try again.');
-        return;
-      }
-      describirImagen(asset.base64, asset.mimeType || 'image/jpeg');
-    }
-  };
+  useEffect(() => () => requestControllerRef.current?.abort(), []);
 
   const elegirGaleria = async () => {
     const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -196,42 +192,51 @@ export default function RegistrarComidaScreen() {
   };
 
   const updateItem = (index, field, value) => {
+    setWarning(null);
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)));
   };
 
   const removeItem = (index) => {
+    setWarning(null);
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
   const total = (items || []).reduce((s, i) => s + numericValue(i.kcal), 0);
 
   const guardar = async () => {
-    if (!items || items.length === 0) return;
+    if (!items || items.length === 0 || saveLockRef.current) return;
+    const validation = validateNutritionItems(items);
+    if (!validation.valid) {
+      setError(validation.issues[0]);
+      return;
+    }
+    if (validation.warnings.length) setWarning(validation.warnings[0]);
+    saveLockRef.current = true;
+    const controller = new AbortController();
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = controller;
     setSaving(true);
     try {
       await createFoodEntry({
         texto,
-        items: items.map((it) => ({
-          name: String(it.name ?? '').trim(),
-          amount: String(it.amount ?? ''),
-          kcal: numericValue(it.kcal),
-          protein: numericValue(it.protein),
-          fat: numericValue(it.fat),
-          carbs: numericValue(it.carbs),
-          note: String(it.note ?? ''),
-        })),
-        totalKcal: total,
+        items: validation.items,
+        totalKcal: validation.items.reduce((sum, item) => sum + item.kcal, 0),
         fecha: new Date(),
         mealType,
-      });
+        clientRequestId: requestIdRef.current,
+      }, controller.signal);
       toast('Meal logged.', 'success');
+      requestIdRef.current = createRequestId('meal');
       setItems(null);
+      setError(null);
+      setWarning(null);
       setTexto('');
       setImagen(null);
       setMealType(guessMealType(new Date()));
     } catch (e) {
-      toast(e.message || 'Could not save.', 'error');
+      if (!controller.signal.aborted) toast(e.message || 'Could not save.', 'error');
     } finally {
+      saveLockRef.current = false;
       setSaving(false);
     }
   };
@@ -275,7 +280,7 @@ export default function RegistrarComidaScreen() {
             <Ionicons name="close" size={16} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.previewHint}>
-            {describiendo ? 'Describing the image…' : 'You can edit the description below.'}
+            {describiendo ? 'Estimating meal nutrition…' : 'Review the AI estimate before saving.'}
           </Text>
         </View>
       ) : null}
@@ -292,7 +297,7 @@ export default function RegistrarComidaScreen() {
           </TouchableOpacity>
         ) : (
           <>
-            <TouchableOpacity style={styles.fotoBtn} onPress={tomarFoto} disabled={describiendo}>
+            <TouchableOpacity style={styles.fotoBtn} onPress={() => setCameraVisible(true)} disabled={describiendo}>
               <Ionicons name="camera-outline" size={18} color={colors.primary} />
               <Text style={styles.fotoBtnText}>Photo</Text>
             </TouchableOpacity>
@@ -319,7 +324,7 @@ export default function RegistrarComidaScreen() {
             cooked.
           </Text>
           <Text style={styles.aiNotice}>
-            AI estimates can be inaccurate. When you use AI, your meal text or selected photo and saved food preferences are sent to Google Gemini. Review the result before saving.
+            AI nutrition values are estimates. For Indian meals, describe the recipe, oil, and portion where possible. Your meal text or selected photo and saved food preferences are sent to Google Gemini after consent. Review the result before saving.
           </Text>
 
           <Card style={styles.mealCard}>
@@ -337,6 +342,7 @@ export default function RegistrarComidaScreen() {
                 {inputCard}
 
                 {error ? <Text style={styles.error}>{error}</Text> : null}
+                {warning ? <Text style={styles.warningText}>{warning}</Text> : null}
 
                 {loading && !items ? (
                   <ActivityIndicator style={styles.loading} color={colors.primary} />
@@ -375,6 +381,7 @@ export default function RegistrarComidaScreen() {
               {inputCard}
 
               {error ? <Text style={styles.error}>{error}</Text> : null}
+              {warning ? <Text style={styles.warningText}>{warning}</Text> : null}
 
               {loading && !items ? (
                 <ActivityIndicator style={styles.loading} color={colors.primary} />
@@ -409,6 +416,16 @@ export default function RegistrarComidaScreen() {
           )}
         </Container>
       </ScrollView>
+      <FoodCameraModal
+        visible={cameraVisible}
+        onClose={() => setCameraVisible(false)}
+        onError={(message) => setError(message)}
+        onCapture={(asset) => {
+          setImagen(asset);
+          setError(null);
+          describirImagen(asset.base64, asset.mimeType);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -536,6 +553,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   error: { color: colors.danger, marginTop: spacing.sm },
+  warningText: { color: colors.warning, marginTop: spacing.sm, lineHeight: 18 },
   loading: { marginVertical: spacing.lg },
   bigBtn: { marginTop: spacing.sm },
   itemCard: { marginBottom: spacing.sm },

@@ -7,8 +7,9 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Platform,
-  Share,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -27,16 +28,27 @@ import { useToast } from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
 import GoogleFitCard from '../components/GoogleFitCard';
 import HealthConnectCard from '../components/HealthConnectCard';
+import PrivacyPolicyModal from '../components/PrivacyPolicyModal';
+import ShiftReminderCard from '../components/ShiftReminderCard';
+import CalorieAdjustmentCard from '../components/CalorieAdjustmentCard';
 import { colors, font, spacing, radius } from '../theme/colors';
 import {
   getUser,
   updateUser,
+  getGeminiApiKey,
+  setGeminiApiKey,
   listWeightEntries,
   listFoodEntries,
   listWorkoutSessions,
   listUserPreferences,
+  listDailyActivity,
+  listAchievements,
+  listCalorieSuggestions,
 } from '../services/api';
-import { getCurrentUser, signOut, isDemoMode } from '../services/auth';
+import { getCurrentUser, signOut, deleteAccount, isDemoMode } from '../services/auth';
+import { clearStoredGeminiKey } from '../services/aiKeyStore';
+import { clearAIDataConsent } from '../services/aiConsent';
+import { buildExportPayload } from '../utils/dataExport.mjs';
 import { resetDemo } from '../services/demoStorage';
 import {
   calcularIMC,
@@ -66,9 +78,12 @@ export default function PerfilScreen() {
   const [goalType, setGoalType] = useState('maintain');
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [estado, setEstado] = useState('idle');
   const [vista, setVista] = useState('perfil');
   const [confirmarSalida, setConfirmarSalida] = useState(false);
+  const [confirmarBorradoCuenta, setConfirmarBorradoCuenta] = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
   const reloadingRef = useRef(false);
   const timerRef = useRef(null);
   const { showToast: toast } = useToast();
@@ -76,15 +91,16 @@ export default function PerfilScreen() {
   const cargar = useCallback(async () => {
     reloadingRef.current = true;
     try {
-      const [user, currentUser, pesos] = await Promise.all([
+      const [user, currentUser, pesos, savedApiKey] = await Promise.all([
         getUser(),
         getCurrentUser(),
         listWeightEntries(),
+        getGeminiApiKey(),
       ]);
       setEmail(currentUser?.email ?? null);
       setObjetivoKcal(String(user.objetivo_kcal ?? 2000));
       setMetaPeso(user.meta_peso_kg != null ? String(user.meta_peso_kg) : '');
-      setApiKey(user.gemini_api_key ?? '');
+      setApiKey(savedApiKey ?? '');
       setAlturaCm(user.altura_cm != null ? String(user.altura_cm) : '');
       setEdad(user.edad != null ? String(user.edad) : '');
       setSexo(normalizeSex(user.sexo));
@@ -128,22 +144,27 @@ export default function PerfilScreen() {
   const exportData = async () => {
     setExporting(true);
     try {
-      const [user, meals, weights, workouts, preferences] = await Promise.all([
+      const [user, meals, weights, workouts, preferences, activity, achievements, calorieSuggestions] = await Promise.all([
         getUser(),
         listFoodEntries(),
         listWeightEntries(),
         listWorkoutSessions(),
         listUserPreferences(),
+        listDailyActivity(),
+        listAchievements(),
+        listCalorieSuggestions(),
       ]);
-      const { gemini_api_key: _privateKey, ...safeProfile } = user || {};
-      const payload = JSON.stringify({
-        exportedAt: new Date().toISOString(),
-        profile: safeProfile,
+      const exportedAt = new Date().toISOString();
+      const payload = JSON.stringify(buildExportPayload({
+        profile: user,
         meals,
         weightEntries: weights,
         workouts,
+        dailyActivity: activity,
         foodPreferences: preferences,
-      }, null, 2);
+        achievements,
+        calorieSuggestions,
+      }, exportedAt, Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown'), null, 2);
 
       if (Platform.OS === 'web' && typeof document !== 'undefined') {
         const file = new Blob([payload], { type: 'application/json' });
@@ -154,10 +175,16 @@ export default function PerfilScreen() {
         document.body.appendChild(link);
         link.click();
         link.remove();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
         toast('Your data export was downloaded.', 'success');
       } else {
-        await Share.share({ title: 'OpenFit data export', message: payload });
+        const fileName = 'openfit-export-' + exportedAt.slice(0, 10) + '.json';
+        const directory = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+        if (!directory) throw new Error('No local folder is available for the export file.');
+        const uri = directory + fileName;
+        await FileSystem.writeAsStringAsync(uri, payload, { encoding: FileSystem.EncodingType.UTF8 });
+        if (!(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+        await Sharing.shareAsync(uri, { mimeType: 'application/json', dialogTitle: 'Export OpenFit data', UTI: 'public.json' });
       }
     } catch (e) {
       toast(e.message || 'Could not export your data.', 'error');
@@ -166,12 +193,12 @@ export default function PerfilScreen() {
     }
   };
 
-  const guardar = async () => {
+  const guardar = async (overrides = {}) => {
     try {
+      await setGeminiApiKey(apiKey.trim());
       await updateUser({
-        objetivoKcal: Number(objetivoKcal) || 2000,
+        objetivoKcal: overrides.objetivoKcal ?? (Number(objetivoKcal) || 2000),
         metaPesoKg: metaPeso ? Number(metaPeso) : null,
-        geminiApiKey: apiKey.trim(),
         alturaCm: alturaCm ? Number(alturaCm) : null,
         sexo,
         edad: edad ? Number(edad) : null,
@@ -184,6 +211,21 @@ export default function PerfilScreen() {
     } catch (e) {
       setEstado('error');
       toast(e.message || 'Could not save.', 'error');
+      if (overrides.throwOnError) throw e;
+    }
+  };
+
+  const borrarCuenta = async () => {
+    setDeletingAccount(true);
+    try {
+      await deleteAccount();
+      await Promise.all([clearStoredGeminiKey(), clearAIDataConsent()]);
+      setConfirmarBorradoCuenta(false);
+      toast('Your account and cloud data were deleted.', 'success');
+    } catch (e) {
+      toast(e.message || 'Could not delete your account.', 'error');
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -385,7 +427,9 @@ export default function PerfilScreen() {
               <SectionLabel>AI</SectionLabel>
               <Field
                 label="Gemini API key"
-                hint="Your own key from Google AI Studio. It stays in your profile record in account mode, or in this browser in demo mode. When you use AI, relevant meal text/photos, saved preferences, and coach context are sent to Google Gemini."
+                hint={Platform.OS === 'web'
+                  ? 'Optional key from Google AI Studio. Stored in this browser. Google quotas/pricing may apply. Clear this field and save to remove it; rotate it in Google AI Studio. Before AI runs, OpenFit explains which meal, preference, chat, and health/profile details are sent to Gemini.'
+                  : 'Optional key from Google AI Studio. Stored in device secure storage. Google quotas/pricing may apply. Clear this field and save to remove it; rotate it in Google AI Studio. Before AI runs, OpenFit explains which meal, preference, chat, and health/profile details are sent to Gemini.'}
               >
                 <Input
                   value={apiKey}
@@ -475,13 +519,29 @@ export default function PerfilScreen() {
         </Grid>
 
         {Platform.OS === 'android' ? (
-          <HealthConnectCard />
+          <HealthConnectCard onOpenPrivacy={() => setPrivacyVisible(true)} />
         ) : (
           <>
             <GoogleFitCard />
-            <HealthConnectCard />
+            <HealthConnectCard onOpenPrivacy={() => setPrivacyVisible(true)} />
           </>
         )}
+        <ShiftReminderCard />
+        {goalType === 'lose' ? (
+          <CalorieAdjustmentCard
+            onApply={async (calorieGoal) => {
+              await guardar({ objetivoKcal: calorieGoal, throwOnError: true });
+              setObjetivoKcal(String(calorieGoal));
+            }}
+          />
+        ) : null}
+        <Button
+          variant="secondary"
+          icon="shield-checkmark-outline"
+          onPress={() => setPrivacyVisible(true)}
+        >
+          Privacy policy and data controls
+        </Button>
 
         <Button
           variant="secondary"
@@ -492,7 +552,18 @@ export default function PerfilScreen() {
         >
           Export my data (JSON)
         </Button>
-        <Text style={styles.exportHint}>Includes meals, workouts, weight, goals and food preferences. Your Gemini API key is excluded.</Text>
+        <Text style={styles.exportHint}>Includes meals, workouts, weight, goals, daily activity, food preferences, and achievements. Your Gemini API key is excluded.</Text>
+
+        <Button
+          variant="secondary"
+          icon="shield-checkmark-outline"
+          onPress={async () => {
+            await clearAIDataConsent();
+            toast('AI data sharing choice cleared. OpenFit will ask again before your next AI request.', 'success');
+          }}
+        >
+          Review AI data sharing choice
+        </Button>
 
         <Button
           variant="danger"
@@ -501,6 +572,15 @@ export default function PerfilScreen() {
         >
           {isDemoMode() ? 'Reset demo data' : 'Sign out'}
         </Button>
+        {!isDemoMode() ? (
+          <Button
+            variant="danger"
+            icon="trash-outline"
+            onPress={() => setConfirmarBorradoCuenta(true)}
+          >
+            Delete my account and data
+          </Button>
+        ) : null}
       </Container>
     </ScrollView>
 
@@ -517,6 +597,17 @@ export default function PerfilScreen() {
       onConfirm={cerrarSesion}
       onCancel={() => setConfirmarSalida(false)}
     />
+    <ConfirmDialog
+      visible={confirmarBorradoCuenta}
+      title="Delete account and all data?"
+      message="This permanently deletes your OpenFit profile, meals, workouts, weight, activity, preferences, and achievements from the cloud, then removes your sign-in account. Export your data first if you want a copy."
+      confirmText="Delete account"
+      icon="trash-outline"
+      loading={deletingAccount}
+      onConfirm={borrarCuenta}
+      onCancel={() => setConfirmarBorradoCuenta(false)}
+    />
+    <PrivacyPolicyModal visible={privacyVisible} onClose={() => setPrivacyVisible(false)} />
     </>
   );
 }

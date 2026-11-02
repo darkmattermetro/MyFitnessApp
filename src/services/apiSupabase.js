@@ -4,8 +4,10 @@
 import { supabase } from './supabaseClient';
 import { config } from '../config';
 import { getCurrentUserId } from './auth';
-import { parseFoodConKey, mejorarPreferenciaConKey, describirImagenConKey, coachReplyConKey } from './gemini';
+import { parseFoodConKey, mejorarPreferenciaConKey, analyzeFoodImageConKey, coachReplyConKey } from './gemini';
 import { guessMealType } from '../utils/nutricion';
+import { readStoredGeminiKey, writeStoredGeminiKey, hasMigratedLegacyGeminiKey, markLegacyGeminiKeyMigrated } from './aiKeyStore';
+import { ensureAIDataConsent } from './aiConsent';
 
 function assertConfigured() {
   if (!config.supabaseUrl || config.supabaseUrl.startsWith('PEGA')) {
@@ -25,7 +27,7 @@ export async function getUser() {
   const uid = await requireUserId();
   const { data, error } = await supabase
     .from('users')
-    .select('*')
+    .select('id,objetivo_kcal,meta_peso_kg,altura_cm,sexo,edad,nivel_actividad,step_goal,water_goal,goal_type,created_at')
     .eq('id', uid)
     .maybeSingle();
   if (error) throw error;
@@ -33,7 +35,6 @@ export async function getUser() {
     id: uid,
     objetivo_kcal: 2000,
     meta_peso_kg: null,
-    gemini_api_key: '',
     altura_cm: null,
     sexo: '',
     edad: null,
@@ -48,7 +49,6 @@ export async function getUser() {
 export async function updateUser({
   objetivoKcal,
   metaPesoKg,
-  geminiApiKey,
   alturaCm,
   sexo,
   edad,
@@ -65,7 +65,6 @@ export async function updateUser({
       id: uid,
       objetivo_kcal: objetivoKcal,
       meta_peso_kg: metaPesoKg,
-      gemini_api_key: geminiApiKey ?? '',
       altura_cm: alturaCm ?? null,
       sexo: sexo ?? '',
       edad: edad ?? null,
@@ -74,16 +73,52 @@ export async function updateUser({
       water_goal: waterGoal ?? 8,
       goal_type: goalType ?? 'maintain',
     })
-    .select()
+    .select('id,objetivo_kcal,meta_peso_kg,altura_cm,sexo,edad,nivel_actividad,step_goal,water_goal,goal_type,created_at')
     .single();
   if (error) throw error;
   return data;
 }
 
+export async function getGeminiApiKey() {
+  assertConfigured();
+  const stored = await readStoredGeminiKey();
+  if (await hasMigratedLegacyGeminiKey()) return stored;
+  const { data: migrated, error: rpcError } = await supabase.rpc('migrate_gemini_api_key', { p_confirm_stored: false });
+  if (!rpcError) {
+    const key = String(migrated || '');
+    if (key) await writeStoredGeminiKey(key);
+    const { error: confirmError } = await supabase.rpc('migrate_gemini_api_key', { p_confirm_stored: true });
+    if (confirmError) throw confirmError;
+    await markLegacyGeminiKeyMigrated();
+    return key || stored;
+  }
+  // Compatibility for accounts before migration 0009 is applied. Copy the
+  // legacy BYOK secret locally, then clear the old column on that same row.
+  const uid = await requireUserId();
+  const { data, error } = await supabase.from('users').select('gemini_api_key').eq('id', uid).maybeSingle();
+  if (error) throw error;
+  const key = String(data?.gemini_api_key || '');
+  if (key && !stored) await writeStoredGeminiKey(key);
+  const { error: clearError } = await supabase.from('users').update({ gemini_api_key: '' }).eq('id', uid);
+  if (clearError) throw clearError;
+  await markLegacyGeminiKeyMigrated();
+  return key || stored;
+}
+
+export async function setGeminiApiKey(value) {
+  return writeStoredGeminiKey(value);
+}
+
 // ---- Meals ----
-export async function createFoodEntry({ texto, items, totalKcal, fecha, mealType }) {
+export async function createFoodEntry({ texto, items, totalKcal, fecha, mealType, clientRequestId }, signal) {
   assertConfigured();
   const uid = await requireUserId();
+  if (clientRequestId) {
+    const { data: prior, error: lookupError } = await supabase.from('food_entries').select('*')
+      .eq('user_id', uid).eq('client_request_id', clientRequestId).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (prior) return prior;
+  }
   const { data, error } = await supabase
     .from('food_entries')
     .insert({
@@ -93,9 +128,17 @@ export async function createFoodEntry({ texto, items, totalKcal, fecha, mealType
       texto_original: texto,
       items,
       total_kcal: totalKcal,
+      client_request_id: clientRequestId ?? null,
     })
+    .abortSignal(signal)
     .select()
     .single();
+  if (error?.code === '23505' && clientRequestId) {
+    const { data: prior, error: lookupError } = await supabase.from('food_entries').select('*')
+      .eq('user_id', uid).eq('client_request_id', clientRequestId).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (prior) return prior;
+  }
   if (error) throw error;
   return data;
 }
@@ -231,9 +274,16 @@ export async function createWorkoutSession({
   exercises,
   totalVolumeKg,
   totalSets,
-}) {
+  clientRequestId,
+}, signal) {
   assertConfigured();
   const uid = await requireUserId();
+  if (clientRequestId) {
+    const { data: prior, error: lookupError } = await supabase.from('workout_sessions').select('*')
+      .eq('user_id', uid).eq('client_request_id', clientRequestId).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (prior) return prior;
+  }
   const { data, error } = await supabase
     .from('workout_sessions')
     .insert({
@@ -246,9 +296,17 @@ export async function createWorkoutSession({
       exercises,
       total_volume_kg: totalVolumeKg ?? 0,
       total_sets: totalSets ?? 0,
+      client_request_id: clientRequestId ?? null,
     })
+    .abortSignal(signal)
     .select()
     .single();
+  if (error?.code === '23505' && clientRequestId) {
+    const { data: prior, error: lookupError } = await supabase.from('workout_sessions').select('*')
+      .eq('user_id', uid).eq('client_request_id', clientRequestId).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (prior) return prior;
+  }
   if (error) throw error;
   return data;
 }
@@ -306,31 +364,49 @@ export async function getDailyActivity(day) {
     day,
     steps: Number(data?.steps) || 0,
     water: Number(data?.water) || 0,
+    stepsProvider: data?.steps_provider == null ? null : Number(data.steps_provider) || 0,
+    stepsManual: Number(data?.steps_manual) || 0,
+    stepsAdjustment: Number(data?.steps_adjustment) || 0,
+    stepsProviderSource: data?.steps_provider_source || null,
   };
 }
 
 export async function saveDailyActivity({ day, steps, water }) {
+  return patchDailyActivity({ day, steps, water });
+}
+
+export async function patchDailyActivity({
+  day,
+  steps,
+  water,
+  stepsProvider,
+  providerSource,
+  stepsManualDelta,
+  stepsAdjustmentDelta,
+}) {
   assertConfigured();
-  const uid = await requireUserId();
-  const clean = {
-    steps: Math.max(0, Math.round(Number(steps) || 0)),
-    water: Math.max(0, Math.round(Number(water) || 0)),
-  };
-  const { data, error } = await supabase
-    .from('daily_activity')
-    .upsert(
-      {
-        user_id: uid,
-        day,
-        ...clean,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,day' },
-    )
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc('patch_daily_activity', {
+    p_day: day,
+    p_steps: steps == null ? null : Math.max(0, Math.round(Number(steps) || 0)),
+    p_water: water == null ? null : Math.max(0, Math.round(Number(water) || 0)),
+    p_steps_provider: stepsProvider == null ? null : Math.max(0, Math.round(Number(stepsProvider) || 0)),
+    p_provider_source: providerSource ?? null,
+    p_steps_manual_delta: stepsManualDelta == null ? null : Math.max(0, Math.round(Number(stepsManualDelta) || 0)),
+    p_steps_adjustment_delta: stepsAdjustmentDelta == null ? null : Math.round(Number(stepsAdjustmentDelta) || 0),
+  });
   if (error) throw error;
   return data;
+}
+
+export async function listDailyActivity({ desde, hasta } = {}) {
+  assertConfigured();
+  const uid = await requireUserId();
+  let query = supabase.from('daily_activity').select('*').eq('user_id', uid).order('day', { ascending: true });
+  if (desde) query = query.gte('day', desde);
+  if (hasta) query = query.lte('day', hasta);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
 }
 
 // ---- User preferences for the AI ----
@@ -368,30 +444,46 @@ export async function deleteUserPreference(id) {
 }
 
 // ---- AI ----
-export async function parseFood(texto) {
+export async function parseFood(texto, signal) {
   assertConfigured();
-  const user = await getUser();
+  await ensureAIDataConsent();
+  const apiKey = await getGeminiApiKey();
   const prefs = await listUserPreferences();
-  return parseFoodConKey(user.gemini_api_key, prefs, texto);
+  return parseFoodConKey(apiKey, prefs, texto, signal);
 }
 
-export async function describeFoodImage(base64, mimeType) {
+export async function analyzeFoodImage(base64, mimeType, signal) {
   assertConfigured();
-  const user = await getUser();
+  await ensureAIDataConsent();
+  const apiKey = await getGeminiApiKey();
   const prefs = await listUserPreferences();
-  return describirImagenConKey(user.gemini_api_key, prefs, base64, mimeType);
+  return analyzeFoodImageConKey(apiKey, prefs, base64, mimeType, signal);
 }
 
 export async function mejorarPreferencia(texto) {
   assertConfigured();
-  const user = await getUser();
-  return mejorarPreferenciaConKey(user.gemini_api_key, texto);
+  await ensureAIDataConsent();
+  const apiKey = await getGeminiApiKey();
+  return mejorarPreferenciaConKey(apiKey, texto);
 }
 
-export async function coachReply(context, messages) {
+export async function coachReply(context, messages, signal) {
   assertConfigured();
-  const user = await getUser();
-  return coachReplyConKey(user.gemini_api_key, context, messages);
+  await ensureAIDataConsent();
+  const apiKey = await getGeminiApiKey();
+  return coachReplyConKey(apiKey, context, messages, signal);
+}
+
+export async function generateDailyCalorieSuggestion(sourceDay) {
+  assertConfigured();
+  await ensureAIDataConsent();
+  await requireUserId();
+  const { data, error } = await supabase.functions.invoke('suggest-next-day-calories', {
+    body: { sourceDay },
+  });
+  if (error) throw new Error(error.message || 'Could not prepare a calorie suggestion.');
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 
 export async function listAchievements() {
@@ -406,4 +498,13 @@ export async function unlockAchievement(key, metadata = {}) {
   const { error } = await supabase.from('user_achievements').upsert({ user_id: uid, achievement_key: key, metadata }, { onConflict: 'user_id,achievement_key', ignoreDuplicates: true });
   if (error) throw error;
   return listAchievements();
+}
+
+export async function listCalorieSuggestions() {
+  const uid = await requireUserId();
+  const { data, error } = await supabase.from('calorie_adjustment_suggestions')
+    .select('source_day,status,suggestion,created_at,updated_at')
+    .eq('user_id', uid).order('source_day', { ascending: false });
+  if (error) throw error;
+  return data || [];
 }

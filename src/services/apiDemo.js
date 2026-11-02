@@ -22,10 +22,16 @@ import {
 import {
   parseFoodConKey,
   mejorarPreferenciaConKey,
-  describirImagenConKey,
+  analyzeFoodImageConKey,
   coachReplyConKey,
 } from './gemini';
 import { guessMealType } from '../utils/nutricion';
+import { readStoredGeminiKey, writeStoredGeminiKey, hasMigratedLegacyGeminiKey, markLegacyGeminiKeyMigrated } from './aiKeyStore';
+import { ensureAIDataConsent } from './aiConsent';
+import { getEffectiveSteps } from '../utils/stepReconciliation.mjs';
+import { createSerializedQueue } from '../utils/serializedQueue.mjs';
+
+const enqueueActivityPatch = createSerializedQueue();
 
 function parseItems(items) {
   if (Array.isArray(items)) return items;
@@ -44,12 +50,12 @@ function parseItems(items) {
 export async function getUser() {
   await seedDemoIfNeeded();
   const user = await demoGetUser();
+  const { gemini_api_key: _legacyKey, ...profile } = user ?? {};
   return {
-    ...(user ?? {}),
+    ...profile,
     id: DEMO_USER_ID,
     objetivo_kcal: user?.objetivo_kcal ?? 2000,
     meta_peso_kg: user?.meta_peso_kg ?? null,
-    gemini_api_key: user?.gemini_api_key ?? '',
     altura_cm: user?.altura_cm ?? null,
     sexo: user?.sexo ?? '',
     edad: user?.edad ?? null,
@@ -63,7 +69,6 @@ export async function getUser() {
 export async function updateUser({
   objetivoKcal,
   metaPesoKg,
-  geminiApiKey,
   alturaCm,
   sexo,
   edad,
@@ -74,12 +79,12 @@ export async function updateUser({
 }) {
   await seedDemoIfNeeded();
   const user = await demoGetUser();
+  const { gemini_api_key: _legacyKey, ...profile } = user ?? {};
   const updated = {
-    ...(user ?? {}),
+    ...profile,
     id: DEMO_USER_ID,
     objetivo_kcal: objetivoKcal,
     meta_peso_kg: metaPesoKg ?? null,
-    gemini_api_key: geminiApiKey ?? '',
     altura_cm: alturaCm ?? null,
     sexo: sexo ?? '',
     edad: edad ?? null,
@@ -91,9 +96,31 @@ export async function updateUser({
   return demoSaveUser(updated);
 }
 
+export async function getGeminiApiKey() {
+  const stored = await readStoredGeminiKey();
+  if (await hasMigratedLegacyGeminiKey()) return stored;
+  const user = await demoGetUser();
+  const legacyKey = String(user?.gemini_api_key || '');
+  if (legacyKey && !stored) await writeStoredGeminiKey(legacyKey);
+  if (user?.gemini_api_key) {
+    const { gemini_api_key: _legacyKey, ...profile } = user;
+    await demoSaveUser(profile);
+  }
+  await markLegacyGeminiKeyMigrated();
+  return stored || legacyKey;
+}
+
+export async function setGeminiApiKey(value) {
+  return writeStoredGeminiKey(value);
+}
+
 // ---- Meals ----
-export async function createFoodEntry({ texto, items, totalKcal, fecha, mealType }) {
+export async function createFoodEntry({ texto, items, totalKcal, fecha, mealType, clientRequestId }) {
   const rows = await demoGetFood();
+  if (clientRequestId) {
+    const prior = rows.find((row) => row.client_request_id === clientRequestId);
+    if (prior) return prior;
+  }
   const entry = {
     id: nextId('food'),
     user_id: DEMO_USER_ID,
@@ -102,6 +129,7 @@ export async function createFoodEntry({ texto, items, totalKcal, fecha, mealType
     texto_original: texto,
     items,
     total_kcal: totalKcal,
+    client_request_id: clientRequestId ?? null,
     created_at: new Date().toISOString(),
   };
   await demoSaveFood([entry, ...rows]);
@@ -187,8 +215,13 @@ export async function createWorkoutSession({
   exercises,
   totalVolumeKg,
   totalSets,
+  clientRequestId,
 }) {
   const rows = await demoGetWorkouts();
+  if (clientRequestId) {
+    const prior = rows.find((row) => row.client_request_id === clientRequestId);
+    if (prior) return prior;
+  }
   const entry = {
     id: nextId('workout'),
     user_id: DEMO_USER_ID,
@@ -200,6 +233,7 @@ export async function createWorkoutSession({
     exercises,
     total_volume_kg: totalVolumeKg ?? 0,
     total_sets: totalSets ?? 0,
+    client_request_id: clientRequestId ?? null,
     created_at: new Date().toISOString(),
   };
   await demoSaveWorkouts([entry, ...rows]);
@@ -232,6 +266,10 @@ export async function getDailyActivity(day) {
     day,
     steps: Number(row?.steps) || 0,
     water: Number(row?.water) || 0,
+    stepsProvider: row?.stepsProvider == null ? null : Number(row.stepsProvider) || 0,
+    stepsManual: Number(row?.stepsManual ?? row?.steps) || 0,
+    stepsAdjustment: Number(row?.stepsAdjustment) || 0,
+    stepsProviderSource: row?.stepsProviderSource || null,
   };
 }
 
@@ -242,20 +280,74 @@ export async function saveDailyActivity({ day, steps, water }) {
     steps: Math.max(0, Math.round(Number(steps) || 0)),
     water: Math.max(0, Math.round(Number(water) || 0)),
   };
+  const provenance = {
+    stepsProvider: null,
+    stepsManual: clean.steps,
+    stepsAdjustment: 0,
+    stepsProviderSource: null,
+  };
   if (idx === -1) {
     rows.push({
       id: nextId('activity'),
       user_id: DEMO_USER_ID,
       day,
       ...clean,
+      ...provenance,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
   } else {
-    rows[idx] = { ...rows[idx], ...clean, updated_at: new Date().toISOString() };
+    rows[idx] = { ...rows[idx], ...clean, ...provenance, updated_at: new Date().toISOString() };
   }
   await demoSaveActivity(rows);
   return { day, ...clean };
+}
+
+export async function patchDailyActivity(patch = {}) {
+  const { day, steps, water } = patch;
+  const applyPatch = async () => {
+    const rows = await demoGetActivity();
+    const idx = rows.findIndex((row) => String(row.day) === String(day));
+    const row = idx >= 0
+      ? { ...rows[idx] }
+      : { id: nextId('activity'), user_id: DEMO_USER_ID, day, steps: 0, stepsManual: 0, stepsProvider: null, stepsAdjustment: 0, water: 0 };
+    if (patch.steps != null) {
+      row.steps = Math.max(0, Math.round(Number(patch.steps) || 0));
+      row.stepsManual = row.steps;
+      row.stepsProvider = null;
+      row.stepsAdjustment = 0;
+      row.stepsProviderSource = null;
+    }
+    if (patch.stepsProvider != null) {
+      row.stepsProvider = Math.max(0, Math.round(Number(patch.stepsProvider) || 0));
+      row.stepsProviderSource = patch.providerSource || null;
+    }
+    if (patch.stepsManualDelta != null) {
+      row.stepsManual = Math.max(0, (Number(row.stepsManual) || 0) + Math.round(Number(patch.stepsManualDelta) || 0));
+    }
+    if (patch.stepsAdjustmentDelta != null) {
+      row.stepsAdjustment = (Number(row.stepsAdjustment) || 0) + Math.round(Number(patch.stepsAdjustmentDelta) || 0);
+    }
+    row.steps = getEffectiveSteps({
+      stepsProvider: row.stepsProvider,
+      stepsManual: row.stepsManual,
+      stepsAdjustment: row.stepsAdjustment,
+    });
+    if (patch.water != null) row.water = Math.max(0, Math.round(Number(patch.water) || 0));
+    row.updated_at = new Date().toISOString();
+    if (idx < 0) rows.push(row);
+    else rows[idx] = row;
+    await demoSaveActivity(rows);
+    return row;
+  };
+  return enqueueActivityPatch(applyPatch);
+}
+
+export async function listDailyActivity({ desde, hasta } = {}) {
+  let rows = await demoGetActivity();
+  if (desde) rows = rows.filter((row) => row.day >= desde);
+  if (hasta) rows = rows.filter((row) => row.day <= hasta);
+  return [...rows].sort((a, b) => a.day.localeCompare(b.day));
 }
 
 // ---- User preferences for the AI ----
@@ -282,27 +374,36 @@ export async function deleteUserPreference(id) {
 }
 
 // ---- AI ----
-export async function parseFood(texto) {
-  const user = await getUser();
+export async function parseFood(texto, signal) {
+  await ensureAIDataConsent();
+  const apiKey = await getGeminiApiKey();
   const prefs = await listUserPreferences();
-  return parseFoodConKey(user.gemini_api_key, prefs, texto);
+  return parseFoodConKey(apiKey, prefs, texto, signal);
 }
 
-export async function describeFoodImage(base64, mimeType) {
-  const user = await getUser();
+export async function analyzeFoodImage(base64, mimeType, signal) {
+  await ensureAIDataConsent();
+  const apiKey = await getGeminiApiKey();
   const prefs = await listUserPreferences();
-  return describirImagenConKey(user.gemini_api_key, prefs, base64, mimeType);
+  return analyzeFoodImageConKey(apiKey, prefs, base64, mimeType, signal);
 }
 
 export async function mejorarPreferencia(texto) {
-  const user = await getUser();
-  return mejorarPreferenciaConKey(user.gemini_api_key, texto);
+  await ensureAIDataConsent();
+  const apiKey = await getGeminiApiKey();
+  return mejorarPreferenciaConKey(apiKey, texto);
 }
 
-export async function coachReply(context, messages) {
-  const user = await getUser();
-  return coachReplyConKey(user.gemini_api_key, context, messages);
+export async function coachReply(context, messages, signal) {
+  await ensureAIDataConsent();
+  const apiKey = await getGeminiApiKey();
+  return coachReplyConKey(apiKey, context, messages, signal);
+}
+
+export async function generateDailyCalorieSuggestion() {
+  throw new Error('Step-based calorie suggestions require your signed-in online account and the configured server function.');
 }
 
 export async function listAchievements() { return demoGetAchievements(); }
 export async function unlockAchievement(key, metadata) { return demoUnlockAchievement(key, metadata); }
+export async function listCalorieSuggestions() { return []; }

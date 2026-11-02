@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -120,6 +120,10 @@ export default function WorkoutScreen() {
   const [expanded, setExpanded] = useState(null);
   const [planEnv, setPlanEnv] = useState('gym');
   const [showCoach, setShowCoach] = useState(false);
+  const saveControllerRef = useRef(null);
+  const saveLockRef = useRef(false);
+
+  useEffect(() => () => saveControllerRef.current?.abort(), []);
 
   const cargar = useCallback(async () => {
     setError(null);
@@ -304,7 +308,10 @@ export default function WorkoutScreen() {
   };
 
   const saveWorkout = async () => {
-    if (!active) return;
+    if (!active || saveLockRef.current) return;
+    saveLockRef.current = true;
+    const controller = new AbortController();
+    saveControllerRef.current = controller;
     setSaving(true);
     try {
       const exercises = active.exercises
@@ -328,15 +335,17 @@ export default function WorkoutScreen() {
         exercises,
         totalVolumeKg: sessionVolume(exercises),
         totalSets: sessionSetCount(exercises),
-      });
+        clientRequestId: active.id,
+      }, controller.signal);
       setActive(null);
       setRest(null);
       setConfirm(null);
       showToast('Workout saved. Nice work!', 'success');
       await cargar();
     } catch (e) {
-      showToast(e.message || 'Could not save the workout.', 'error');
+      if (!controller.signal.aborted) showToast(e.message || 'Could not save the workout.', 'error');
     } finally {
+      saveLockRef.current = false;
       setSaving(false);
     }
   };

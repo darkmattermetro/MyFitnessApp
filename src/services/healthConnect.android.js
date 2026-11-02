@@ -8,7 +8,7 @@ import {
   SdkAvailabilityStatus,
 } from 'react-native-health-connect';
 import { secureStorage } from './storage';
-import { getDailyActivity, saveDailyActivity } from './api';
+import { getDailyActivity, patchDailyActivity } from './api';
 import { dayKey } from '../utils/dates';
 
 const LAST_SYNC_KEY = 'health_connect_last_sync';
@@ -137,13 +137,9 @@ export async function syncHealthConnectSteps(days = 7) {
 
   let updated = 0;
   for (const { day, steps } of imported) {
-    if (!steps) continue;
     const current = await getDailyActivity(day);
-    const currentSteps = Number(current?.steps) || 0;
-    if (steps > currentSteps) {
-      await saveDailyActivity({ day, steps, water: Number(current?.water) || 0 });
-      updated += 1;
-    }
+    await patchDailyActivity({ day, stepsProvider: steps, providerSource: 'health_connect' });
+    if (Number(current?.steps) !== steps) updated += 1;
   }
 
   const lastSync = new Date().toISOString();

@@ -41,7 +41,10 @@ export default function CoachModal({ visible, onClose, context, onOpenProfile })
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
+  const [failedMessage, setFailedMessage] = useState(null);
   const scrollRef = useRef(null);
+  const requestRef = useRef(null);
+  const sendingRef = useRef(false);
 
   useEffect(() => {
     if (visible && messages.length === 0) {
@@ -49,30 +52,48 @@ export default function CoachModal({ visible, onClose, context, onOpenProfile })
     }
   }, [visible, messages.length]);
 
+  useEffect(() => () => requestRef.current?.abort(), []);
+
   const close = () => {
-    if (sending) return;
+    requestRef.current?.abort();
     onClose();
   };
 
-  const send = async (preset) => {
+  const send = async (preset, retry = null) => {
     const question = String(preset ?? input).trim();
-    if (!question || sending) return;
+    if (!question || sendingRef.current) return;
 
-    const withUser = [...messages, { id: uid(), role: 'user', text: question }];
-    setMessages(withUser);
-    setInput('');
+    const userMessage = retry ? null : { id: uid(), role: 'user', text: question };
+    const withUser = retry ? messages : [...messages, userMessage];
+    if (!retry) {
+      setMessages(withUser);
+      setInput('');
+    }
     setError(null);
+    setFailedMessage(null);
+    const controller = new AbortController();
+    requestRef.current = controller;
+    sendingRef.current = true;
     setSending(true);
 
     try {
       const history = withUser
         .filter((m) => m.id !== 'welcome')
         .map((m) => ({ role: m.role, text: m.text }));
-      const answer = await coachReply(context, history);
+      const answer = await coachReply(context, history, controller.signal);
       setMessages((prev) => [...prev, { id: uid(), role: 'coach', text: answer }]);
     } catch (e) {
-      setError(e.message || 'Could not reach the coach. Please try again.');
+      if (controller.signal.aborted) {
+        if (userMessage) setMessages((prev) => prev.filter((message) => message.id !== userMessage.id));
+        setInput((current) => current.trim() ? current : question);
+      } else {
+        setError(e.message || 'Could not reach the coach. Please try again.');
+        setFailedMessage({ id: userMessage?.id || retry?.id, text: question });
+        setInput((current) => current.trim() ? current : question);
+      }
     } finally {
+      if (requestRef.current === controller) requestRef.current = null;
+      sendingRef.current = false;
       setSending(false);
     }
   };
@@ -84,7 +105,7 @@ export default function CoachModal({ visible, onClose, context, onOpenProfile })
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
       <View style={[styles.backdrop, isDesktop && styles.backdropDesktop]}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
           style={[
             styles.sheet,
             {
@@ -165,6 +186,11 @@ export default function CoachModal({ visible, onClose, context, onOpenProfile })
             {error ? (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{error}</Text>
+                {failedMessage ? (
+                  <TouchableOpacity style={styles.retryBtn} onPress={() => send(failedMessage.text, failedMessage)} disabled={sending}>
+                    <Text style={styles.retryBtnText}>Retry message</Text>
+                  </TouchableOpacity>
+                ) : null}
                 {needsKey && onOpenProfile ? (
                   <TouchableOpacity
                     style={styles.errorBtn}
@@ -184,13 +210,20 @@ export default function CoachModal({ visible, onClose, context, onOpenProfile })
             <TextInput
               value={input}
               onChangeText={setInput}
-              placeholder="Ask your coach…"
+              placeholder={IS_WEB ? 'Message your coach… (Shift+Enter for a new line)' : 'Message your coach…'}
               placeholderTextColor={colors.textMuted}
               style={styles.input}
               multiline
               maxLength={800}
-              onSubmitEditing={() => send()}
-              submitBehavior="submit"
+              accessibilityLabel="Message your AI coach"
+              accessibilityHint="Type a question. Use the arrow button to send."
+              submitBehavior="newline"
+              onKeyPress={IS_WEB ? (event) => {
+                if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault?.();
+                  send();
+                }
+              } : undefined}
             />
             <TouchableOpacity
               style={[
@@ -199,6 +232,8 @@ export default function CoachModal({ visible, onClose, context, onOpenProfile })
               ]}
               onPress={() => send()}
               disabled={!input.trim() || sending}
+              accessibilityRole="button"
+              accessibilityLabel="Send message to AI coach"
             >
               {sending ? (
                 <ActivityIndicator size="small" color={colors.white} />
@@ -315,6 +350,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs + 2,
   },
   errorBtnText: { color: colors.white, fontSize: font.sm, fontWeight: '700' },
+  retryBtn: { alignSelf: 'flex-start', marginTop: spacing.sm, paddingVertical: spacing.xs },
+  retryBtnText: { color: colors.danger, fontSize: font.sm, fontWeight: '700' },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -334,6 +371,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     fontSize: font.md,
     color: colors.text,
+    textAlignVertical: 'top',
     ...(IS_WEB ? { outlineStyle: 'none' } : {}),
   },
   sendBtn: {

@@ -19,7 +19,7 @@ export function ProgressRing({ label, value, target, unit, color, size = 94 }) {
   return (
     <View style={[styles.ringWrap, { width: size }]}>
       <Svg width={size} height={size} style={styles.ringSvg}>
-        <Circle cx={size / 2} cy={size / 2} r={r} stroke="#E7E9EC" strokeWidth={stroke} fill="none" />
+          <Circle cx={size / 2} cy={size / 2} r={r} stroke={colors.border} strokeWidth={stroke} fill="none" />
         <AnimatedCircle animatedProps={animatedProps} cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${circumference} ${circumference}`} fill="none" />
       </Svg>
       <View style={styles.ringCenter}>
@@ -74,9 +74,9 @@ const styles = StyleSheet.create({
   headingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: colors.text, fontSize: font.md, fontWeight: '800' },
   sub: { color: colors.textMuted, fontSize: font.sm, marginTop: 3 },
-  streak: { color: '#B45309', backgroundColor: '#FEF3C7', overflow: 'hidden', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6, fontSize: font.xs, fontWeight: '700' },
+  streak: { color: '#FBBF5A', backgroundColor: '#3A2D18', overflow: 'hidden', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6, fontSize: font.xs, fontWeight: '700' },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.md },
-  badge: { color: '#7C2D12', backgroundColor: '#FFEDD5', overflow: 'hidden', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6, fontSize: font.xs, fontWeight: '700' },
+  badge: { color: '#FDBA74', backgroundColor: '#3A2920', overflow: 'hidden', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6, fontSize: font.xs, fontWeight: '700' },
   rings: { flexDirection: 'row', justifyContent: 'space-around', marginTop: spacing.md, gap: spacing.xs },
   ringWrap: { alignItems: 'center' },
   ringSvg: { transform: [{ rotate: '-90deg' }] },

@@ -7,6 +7,8 @@
 
 import { storage, secureStorage } from './storage';
 import { dayKey } from '../utils/dates';
+import { clearStoredGeminiKey } from './aiKeyStore';
+import { clearAIDataConsent } from './aiConsent';
 
 const KEYS = {
   user: 'demo:user',
@@ -311,6 +313,8 @@ export async function resetDemo() {
       storage.removeItem(KEYS.activity),
       storage.removeItem(KEYS.seeded),
       secureStorage.removeItem(KEYS.user),
+      clearStoredGeminiKey(),
+      clearAIDataConsent(),
     ].map((p) => p.catch(() => {})),
   );
   await seedDemoIfNeeded();

@@ -9,7 +9,7 @@ import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { secureStorage } from './storage';
-import { getDailyActivity, saveDailyActivity } from './api';
+import { getDailyActivity, patchDailyActivity } from './api';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -217,13 +217,9 @@ export async function syncSteps(days = 7) {
   let updated = 0;
   await secureStorage.setItem(ACTIVITY_SUMMARY_KEY, JSON.stringify(imported));
   for (const { day, steps } of imported) {
-    if (!steps) continue;
     const current = await getDailyActivity(day);
-    const currentSteps = Number(current?.steps) || 0;
-    if (steps > currentSteps) {
-      await saveDailyActivity({ day, steps, water: Number(current?.water) || 0 });
-      updated += 1;
-    }
+    await patchDailyActivity({ day, stepsProvider: steps, providerSource: 'google_fit' });
+    if (Number(current?.steps) !== steps) updated += 1;
   }
   const now = new Date().toISOString();
   await setLastSync(now);

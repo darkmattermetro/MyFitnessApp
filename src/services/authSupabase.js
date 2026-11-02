@@ -44,6 +44,16 @@ export async function signOut() {
   if (error) throw new Error(messageFor(error));
 }
 
+export async function deleteAccount() {
+  const { data, error } = await supabase.functions.invoke('delete-account', { body: {} });
+  if (error) throw new Error(error.message || 'Could not delete the account.');
+  if (data?.error) throw new Error(data.error);
+  // The server has already removed this user's auth record. Clear the local
+  // session without making account deletion look like it failed if remote
+  // token revocation is no longer possible.
+  await supabase.auth.signOut({ scope: 'local' });
+}
+
 export async function getSession() {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw new Error(messageFor(error));

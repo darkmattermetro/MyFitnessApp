@@ -5,8 +5,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { config, isSupabaseConfigured } from '../config';
 import { storage } from './storage';
+import { createDeadlineFetch } from '../utils/deadlineFetch.mjs';
 
 let client = null;
+
+const fetchWithDeadline = createDeadlineFetch();
 
 function getClient() {
   if (!client) {
@@ -14,6 +17,7 @@ function getClient() {
       throw new Error('Supabase is not configured. Fill in your .env file.');
     }
     client = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+      global: { fetch: fetchWithDeadline },
       auth: {
         persistSession: true,
         autoRefreshToken: true,

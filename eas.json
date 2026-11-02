@@ -9,6 +9,7 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "environment": "preview",
       "node": "22.13.0",
       "android": {

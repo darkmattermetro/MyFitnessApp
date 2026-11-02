@@ -23,4 +23,4 @@ export default function DashboardSkeleton() {
 }
 
 const styles = StyleSheet.create({ page: { flex: 1, padding: spacing.md, paddingTop: spacing.xl, backgroundColor: colors.background },
-  placeholder: { borderRadius: radius.md, backgroundColor: '#DCE2E8' }, block: { marginBottom: spacing.md }, row: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md }, half: { flex: 1 } });
+  placeholder: { borderRadius: radius.md, backgroundColor: colors.surfaceMuted }, block: { marginBottom: spacing.md }, row: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md }, half: { flex: 1 } });
