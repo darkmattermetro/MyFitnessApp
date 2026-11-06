@@ -2,9 +2,12 @@ import { useRef, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, spacing } from '../theme/colors';
+import { font, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 export default function FoodCameraModal({ visible, onClose, onCapture, onError }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const cameraRef = useRef(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [ready, setReady] = useState(false);
@@ -76,7 +79,7 @@ export default function FoodCameraModal({ visible, onClose, onCapture, onError }
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: '#050505' },
   overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between', padding: spacing.lg },
   topBar: { flexDirection: 'row', alignItems: 'center', paddingTop: spacing.xl },

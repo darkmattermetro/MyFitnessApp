@@ -368,6 +368,13 @@ export async function createUserPreference(texto) {
   return pref;
 }
 
+export async function updateUserPreference(id, texto) {
+  const rows = await demoGetPrefs();
+  const next = rows.map((row) => (row.id === id ? { ...row, texto } : row));
+  await demoSavePrefs(next);
+  return next.find((row) => row.id === id) ?? null;
+}
+
 export async function deleteUserPreference(id) {
   const rows = await demoGetPrefs();
   await demoSavePrefs(rows.filter((r) => r.id !== id));

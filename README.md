@@ -9,7 +9,6 @@ OpenFit is an Expo React Native fitness tracker for Android, iOS, and web. It co
 - **Workouts:** workout templates and exercise logging, plus an AI home-workout coach.
 - **Health Connect:** Android reads granted steps, active calories, and sleep. Web cannot access Health Connect. Google Fit web integration remains legacy and depends on OAuth configuration; it is not the source used by the Android Health Connect bridge.
 - **Privacy:** in-app policy, AI consent before the first AI request, device-secure BYOK storage on native, export, and account deletion flow.
-- **Shift reminders:** import a CSV roster using `sign_off,next_sign_on` columns. A reminder is scheduled 1 hour after sign-off only when the next sign-on is at least 12 hours later.
 - **Calorie suggestion:** authenticated server-side Gemini review can propose a small next-day adjustment for a weight-loss goal. It is stored for review; the user must confirm before their calorie goal changes.
 - **Gamification:** achievement badges and daily activity tracking.
 
@@ -62,18 +61,18 @@ npx eas-cli login
 npm run build:apk
 ```
 
-EAS produces a build URL; download the APK from that build page. The native camera, notification, Health Connect and rationale configuration requires a new native build. Later JavaScript/style changes compatible with the installed native runtime can use `npm run update:preview`; production OTA uses `npm run update:production`. Expo Updates only applies a bundle with the matching runtime version and update channel. Native modules, permissions, or native config changes need another APK.
+EAS produces a build URL; download the APK from that build page. The native camera, Health Connect and rationale configuration requires a new native build. Later JavaScript/style changes compatible with the installed native runtime can use `npm run update:preview`; production OTA uses `npm run update:production`. Expo Updates only applies a bundle with the matching runtime version and update channel. Native modules, permissions, or native config changes need another APK.
 
 ## Checks
 
-- `npm test` runs regression tests for nutrition validation, step-source reconciliation, shift parsing, export redaction, serialized activity patches, and migration/backend safeguards.
+- `npm test` runs regression tests for nutrition validation, step-source reconciliation, export redaction, serialized activity patches, and migration/backend safeguards.
 - `npm run export:web` verifies a static web bundle can be generated.
 
 ## Project layout
 
 - `src/screens/`, `src/components/`: app screens and UI.
-- `src/services/`: Supabase/demo APIs, authentication, Health Connect, Gemini, consent and notifications.
-- `src/utils/`: nutrition validation, export, shift parsing and step reconciliation.
+- `src/services/`: Supabase/demo APIs, authentication, Health Connect, Gemini and consent.
+- `src/utils/`: nutrition validation, export, and step reconciliation.
 - `supabase/migrations/`: reviewed database changes.
 - `supabase/functions/`: deployable server functions.
 - `plugins/`: generated Android Health Connect rationale screen.
@@ -81,6 +80,5 @@ EAS produces a build URL; download the APK from that build page. The native came
 ## References
 
 - [Expo Camera](https://docs.expo.dev/versions/latest/sdk/camera/)
-- [Expo Notifications](https://docs.expo.dev/versions/latest/sdk/notifications/)
 - [Expo EAS Update runtime versions](https://docs.expo.dev/eas-update/runtime-versions/)
 - [Android Health Connect permissions rationale](https://developer.android.com/health-and-fitness/health-connect/get-started)

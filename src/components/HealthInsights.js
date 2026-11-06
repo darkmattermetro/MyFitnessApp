@@ -4,11 +4,14 @@ import { BarChart } from 'react-native-gifted-charts';
 import Svg, { Circle } from 'react-native-svg';
 import Animated, { useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Card } from './ui';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 export function ProgressRing({ label, value, target, unit, color, size = 94 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const stroke = 8;
   const r = (size - stroke) / 2;
   const circumference = 2 * Math.PI * r;
@@ -32,6 +35,8 @@ export function ProgressRing({ label, value, target, unit, color, size = 94 }) {
 }
 
 export default function HealthInsights({ days = [], stepsGoal = 8000, caloriesGoal = 300, water = 0, waterGoal = 8, streak = 0, achievements = [] }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const rows = days.slice(-7);
   const chartData = (key) => rows.map((row) => ({ value: Number(row[key]) || 0, label: new Date(`${row.day}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1) }));
   const today = rows[rows.length - 1] || {};
@@ -69,14 +74,14 @@ export default function HealthInsights({ days = [], stepsGoal = 8000, caloriesGo
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   card: { marginBottom: spacing.md, borderRadius: radius.lg },
   headingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: colors.text, fontSize: font.md, fontWeight: '800' },
   sub: { color: colors.textMuted, fontSize: font.sm, marginTop: 3 },
-  streak: { color: '#FBBF5A', backgroundColor: '#3A2D18', overflow: 'hidden', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6, fontSize: font.xs, fontWeight: '700' },
+  streak: { color: colors.warning, backgroundColor: colors.warningSoft, overflow: 'hidden', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6, fontSize: font.xs, fontWeight: '700' },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.md },
-  badge: { color: '#FDBA74', backgroundColor: '#3A2920', overflow: 'hidden', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6, fontSize: font.xs, fontWeight: '700' },
+  badge: { color: colors.warning, backgroundColor: colors.warningSoft, overflow: 'hidden', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6, fontSize: font.xs, fontWeight: '700' },
   rings: { flexDirection: 'row', justifyContent: 'space-around', marginTop: spacing.md, gap: spacing.xs },
   ringWrap: { alignItems: 'center' },
   ringSvg: { transform: [{ rotate: '-90deg' }] },

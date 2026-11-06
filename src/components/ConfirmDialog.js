@@ -1,7 +1,8 @@
 import { Modal, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card } from './ui';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 export default function ConfirmDialog({
   visible,
@@ -15,6 +16,8 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const palette =
     tone === 'primary'
       ? { color: colors.primary, bg: colors.primarySoft, variant: 'primary' }
@@ -50,7 +53,7 @@ export default function ConfirmDialog({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.5)',

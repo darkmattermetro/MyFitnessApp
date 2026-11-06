@@ -16,12 +16,15 @@ import * as ImagePicker from 'expo-image-picker';
 import FoodCameraModal from '../components/FoodCameraModal';
 import { Button, Card, ChipGroup, Container, SectionLabel, Grid, GridItem, useResponsive } from '../components/ui';
 import PreferenciasSection from '../components/PreferenciasSection';
+import DietCoachCard from '../components/DietCoachCard';
 import { useToast } from '../components/Toast';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { parseFood, createFoodEntry, analyzeFoodImage } from '../services/api';
 import { MEAL_TYPES, guessMealType } from '../utils/nutricion';
 import { validateNutritionItems } from '../utils/nutritionValidation.mjs';
 import { createRequestId } from '../utils/requestId';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
@@ -32,6 +35,8 @@ function numericValue(value) {
 
 export default function RegistrarComidaScreen() {
   const { isDesktop } = useResponsive();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [texto, setTexto] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -63,7 +68,7 @@ export default function RegistrarComidaScreen() {
       setItems(res.items);
       if (res.warnings?.length) setWarning(res.warnings[0]);
     } catch (e) {
-      if (!controller.signal.aborted) setError(e.message || 'Could not interpret the meal.');
+      if (!controller.signal.aborted) setError(friendlyError(e, 'Could not interpret the meal.'));
     } finally {
       setLoading(false);
     }
@@ -88,7 +93,7 @@ export default function RegistrarComidaScreen() {
       setItems(result.items);
       if (result.warnings?.length) setWarning(result.warnings[0]);
     } catch (e) {
-      if (!controller.signal.aborted) setError(e.message || 'Could not describe the image.');
+      if (!controller.signal.aborted) setError(friendlyError(e, 'Could not describe the image.'));
     } finally {
       setDescribiendo(false);
     }
@@ -130,7 +135,7 @@ export default function RegistrarComidaScreen() {
         base64: true,
       });
     } catch (e) {
-      setError(e.message || 'Could not open the file picker.');
+      setError(friendlyError(e, 'Could not open the file picker.'));
       return;
     }
     if (res.canceled || !res.assets || res.assets.length === 0) return;
@@ -174,7 +179,7 @@ export default function RegistrarComidaScreen() {
           reader.readAsDataURL(file);
         });
       } catch (e) {
-        setError(e.message || 'Could not read the image.');
+        setError(friendlyError(e, 'Could not read the image.'));
         return;
       }
     }
@@ -204,7 +209,10 @@ export default function RegistrarComidaScreen() {
   const total = (items || []).reduce((s, i) => s + numericValue(i.kcal), 0);
 
   const guardar = async () => {
-    if (!items || items.length === 0 || saveLockRef.current) return;
+    if (!items || items.length === 0 || saveLockRef.current) {
+      setError('There are no food items to save. Interpret a meal first.');
+      return;
+    }
     const validation = validateNutritionItems(items);
     if (!validation.valid) {
       setError(validation.issues[0]);
@@ -212,12 +220,13 @@ export default function RegistrarComidaScreen() {
     }
     if (validation.warnings.length) setWarning(validation.warnings[0]);
     saveLockRef.current = true;
+    setError(null);
     const controller = new AbortController();
     requestControllerRef.current?.abort();
     requestControllerRef.current = controller;
     setSaving(true);
     try {
-      await createFoodEntry({
+      const saved = await createFoodEntry({
         texto,
         items: validation.items,
         totalKcal: validation.items.reduce((sum, item) => sum + item.kcal, 0),
@@ -225,6 +234,7 @@ export default function RegistrarComidaScreen() {
         mealType,
         clientRequestId: requestIdRef.current,
       }, controller.signal);
+      if (!saved) throw new Error('OpenFit did not confirm that the meal was saved. Check your connection and try again.');
       toast('Meal logged.', 'success');
       requestIdRef.current = createRequestId('meal');
       setItems(null);
@@ -234,7 +244,11 @@ export default function RegistrarComidaScreen() {
       setImagen(null);
       setMealType(guessMealType(new Date()));
     } catch (e) {
-      if (!controller.signal.aborted) toast(e.message || 'Could not save.', 'error');
+      if (!controller.signal.aborted) {
+        const message = friendlyError(e, 'Could not save this meal. Check your connection and try again.');
+        setError(message);
+        toast(message, 'error');
+      }
     } finally {
       saveLockRef.current = false;
       setSaving(false);
@@ -341,7 +355,7 @@ export default function RegistrarComidaScreen() {
               <GridItem cols={1}>
                 {inputCard}
 
-                {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
                 {warning ? <Text style={styles.warningText}>{warning}</Text> : null}
 
                 {loading && !items ? (
@@ -371,6 +385,7 @@ export default function RegistrarComidaScreen() {
                 )}
               </GridItem>
               <GridItem cols={1}>
+                <DietCoachCard mealType={mealType} />
                 <View style={styles.prefWrap}>
                   <PreferenciasSection />
                 </View>
@@ -410,6 +425,7 @@ export default function RegistrarComidaScreen() {
               )}
 
               <View style={styles.prefWrap}>
+                <DietCoachCard mealType={mealType} />
                 <PreferenciasSection />
               </View>
             </>
@@ -431,6 +447,8 @@ export default function RegistrarComidaScreen() {
 }
 
 function Confirmacion({ items, total, updateItem, removeItem, onEditar, onGuardar, saving }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const macroTotals = items.reduce((totals, item) => ({
     protein: totals.protein + numericValue(item.protein),
     carbs: totals.carbs + numericValue(item.carbs),
@@ -519,7 +537,7 @@ function Confirmacion({ items, total, updateItem, removeItem, onEditar, onGuarda
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1 },
   title: { fontSize: font.xl, fontWeight: '800', color: colors.text },

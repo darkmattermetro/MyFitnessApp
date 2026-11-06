@@ -11,11 +11,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Button, ChipGroup } from './ui';
 import { EXERCISES, MUSCLES } from '../data/exercises';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 const FILTERS = [{ value: 'all', label: 'All' }, ...MUSCLES];
 
 export default function ExercisePicker({ visible, addedNames = [], onPick, onClose }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [query, setQuery] = useState('');
   const [muscle, setMuscle] = useState('all');
 
@@ -154,7 +157,7 @@ export default function ExercisePicker({ visible, addedNames = [], onPick, onClo
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',

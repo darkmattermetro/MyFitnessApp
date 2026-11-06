@@ -11,11 +11,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, Input, PasswordInput } from '../components/ui';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { requestPasswordReset, signIn, signUp } from '../services/auth';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 export default function AuthScreen() {
   const { width } = useWindowDimensions();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [modo, setModo] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -62,7 +66,7 @@ export default function AuthScreen() {
         await signUp(email.trim(), password);
       }
     } catch (e) {
-      setError(e.message);
+      setError(friendlyError(e, 'Could not sign in. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -89,7 +93,7 @@ export default function AuthScreen() {
       await requestPasswordReset(address);
       setNotice('If an account exists for this email, a password reset link is on its way.');
     } catch (e) {
-      setError(e.message || 'Could not send a reset link.');
+      setError(friendlyError(e, 'Could not send a reset link.'));
     } finally {
       setLoading(false);
     }
@@ -193,7 +197,7 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   container: {
     flexGrow: 1,

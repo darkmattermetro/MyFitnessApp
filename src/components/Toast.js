@@ -10,7 +10,8 @@ import {
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 const ToastContext = createContext(null);
 
@@ -20,13 +21,14 @@ export function useToast() {
   return ctx;
 }
 
-const TONES = {
+const tonesFor = (colors) => ({
   success: { bg: colors.primarySoft, text: colors.primaryDark, icon: 'checkmark-circle' },
   error: { bg: colors.dangerSoft, text: colors.danger, icon: 'alert-circle' },
   info: { bg: colors.surfaceMuted, text: colors.text, icon: 'information-circle' },
-};
+});
 
 export default function ToastProvider({ children }) {
+  const { colors } = useTheme();
   const [toast, setToast] = useState(null);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(12)).current;
@@ -61,6 +63,7 @@ export default function ToastProvider({ children }) {
   );
 
   const value = useMemo(() => ({ showToast }), [showToast]);
+  const tones = tonesFor(colors);
 
   return (
     <ToastContext.Provider value={value}>
@@ -68,7 +71,7 @@ export default function ToastProvider({ children }) {
       {toast ? (
         <ToastView
           toast={toast}
-          tone={TONES[toast.tone] || TONES.info}
+          tone={tones[toast.tone] || tones.info}
           opacity={opacity}
           translateY={translateY}
         />
@@ -79,6 +82,7 @@ export default function ToastProvider({ children }) {
 
 function ToastView({ toast, tone, opacity, translateY }) {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.overlay} pointerEvents="box-none">
       <Animated.View
@@ -95,7 +99,7 @@ function ToastView({ toast, tone, opacity, translateY }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 999,

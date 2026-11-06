@@ -18,6 +18,11 @@ export async function syncHealthConnectSteps() {
   throw new Error('Health Connect is available in the Android app only.');
 }
 
+// No-op outside Android: the dashboard calls this on focus and app resume.
+export async function autoSyncHealthConnectToday() {
+  return { skipped: true, days: [] };
+}
+
 export async function getHealthConnectWeeklySummary() {
   return { available: false, days: [] };
 }

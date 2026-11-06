@@ -1,8 +1,9 @@
 import { Component } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 
-export default class ErrorBoundary extends Component {
+class ErrorBoundaryView extends Component {
   state = { error: null };
 
   static getDerivedStateFromError(error) {
@@ -15,6 +16,7 @@ export default class ErrorBoundary extends Component {
 
   render() {
     if (!this.state.error) return this.props.children;
+    const { styles } = this.props;
 
     return (
       <View style={styles.flex}>
@@ -32,7 +34,12 @@ export default class ErrorBoundary extends Component {
   }
 }
 
-const styles = StyleSheet.create({
+export default function ErrorBoundary(props) {
+  const styles = useThemedStyles(makeStyles);
+  return <ErrorBoundaryView {...props} styles={styles} />;
+}
+
+const makeStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   card: {
     width: '100%',

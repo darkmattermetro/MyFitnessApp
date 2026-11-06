@@ -1,20 +1,24 @@
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useResponsive } from './ui';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
-const TONES = {
+const tonesFor = (colors) => ({
   success: { icon: 'checkmark-circle', bg: colors.primarySoft, fg: colors.primaryDark },
   info: { icon: 'information-circle', bg: colors.primarySoft, fg: colors.primaryDark },
   warning: { icon: 'alert-circle', bg: colors.warningSoft, fg: colors.warning },
   danger: { icon: 'warning', bg: colors.dangerSoft, fg: colors.danger },
   streak: { icon: 'flame', bg: colors.warningSoft, fg: colors.warning },
-};
+});
 
 // In-app notification centre. Alerts are generated from today's data instead
 // of being stored, so they are always up to date.
 export default function AlertsModal({ visible, onClose, alerts = [], dayLabel = 'today' }) {
   const { isDesktop } = useResponsive();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const tones = tonesFor(colors);
   const actionable = alerts.filter((a) => a.tone !== 'success').length;
 
   return (
@@ -57,7 +61,7 @@ export default function AlertsModal({ visible, onClose, alerts = [], dayLabel = 
               </View>
             ) : (
               alerts.map((alert) => {
-                const tone = TONES[alert.tone] ?? TONES.info;
+                const tone = tones[alert.tone] ?? tones.info;
                 return (
                   <View key={alert.id} style={styles.row}>
                     <View style={[styles.rowIcon, { backgroundColor: tone.bg }]}>
@@ -78,7 +82,7 @@ export default function AlertsModal({ visible, onClose, alerts = [], dayLabel = 
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.45)',

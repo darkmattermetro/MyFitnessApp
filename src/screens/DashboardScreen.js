@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import {
   ActivityIndicator,
+  AppState,
   Platform,
   RefreshControl,
   ScrollView,
@@ -18,8 +19,10 @@ import CoachModal from '../components/CoachModal';
 import AlertsModal from '../components/AlertsModal';
 import HealthInsights from '../components/HealthInsights';
 import DashboardSkeleton from '../components/DashboardSkeleton';
-import { getHealthConnectWeeklySummary } from '../services/healthConnect';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { autoSyncHealthConnectToday, getHealthConnectWeeklySummary } from '../services/healthConnect';
+import { storage } from '../services/storage';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import {
   getDailyActivity,
   getUser,
@@ -49,8 +52,10 @@ import {
 } from '../utils/dates';
 import { usePedometer } from '../hooks/usePedometer';
 import { getEffectiveSteps } from '../utils/stepReconciliation.mjs';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 const IS_WEB = Platform.OS === 'web';
+const SENSOR_PREF_KEY = 'openfit:pedometer-enabled:v1';
 
 function todayNoon() {
   const d = new Date();
@@ -64,6 +69,8 @@ function formatNumber(value) {
 
 export default function DashboardScreen() {
   const { isDesktop } = useResponsive();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation();
 
   const [selectedDay, setSelectedDay] = useState(todayNoon);
@@ -80,7 +87,7 @@ export default function DashboardScreen() {
   const [error, setError] = useState(null);
   const [showCoach, setShowCoach] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
-  const [sensorOn, setSensorOn] = useState(false);
+  const [sensorOn, setSensorOn] = useState(true);
   const [healthDays, setHealthDays] = useState([]);
   const [achievements, setAchievements] = useState([]);
 
@@ -92,6 +99,11 @@ export default function DashboardScreen() {
     setError(null);
     try {
       const day = dayKey(selectedDay);
+      // Import today's Health Connect total before reading the stored row so
+      // the number on screen is current without opening Profile or tapping Sync.
+      if (isToday(selectedDay)) {
+        await autoSyncHealthConnectToday().catch(() => {});
+      }
       const [loadedUser, foodRows, weightRows, workoutRows, daily, health, earned] = await Promise.all([
         getUser(),
         listFoodEntries({
@@ -122,18 +134,75 @@ export default function DashboardScreen() {
       activityRef.current = nextActivity;
       setActivity(nextActivity);
     } catch (e) {
-      setError(e.message || 'Could not load your dashboard.');
+      setError(friendlyError(e, 'Could not load your dashboard.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [selectedDay]);
 
+  // Cheap refresh used while Today stays open and when the app returns to the
+  // foreground. Only the provider-backed total is replaced; water and other
+  // unsaved edits are preserved.
+  const refreshTodaySteps = useCallback(async () => {
+    if (!isToday(selectedDay)) return;
+    try {
+      await autoSyncHealthConnectToday();
+      const day = dayKey(selectedDay);
+      const daily = await getDailyActivity(day);
+      if (daily?.stepsProvider == null) return;
+      const next = {
+        ...activityRef.current,
+        day,
+        steps: Number(daily.steps) || 0,
+        stepsProvider: Number(daily.stepsProvider) || 0,
+        stepsManual: Number(daily.stepsManual ?? daily.steps) || 0,
+        stepsAdjustment: Number(daily.stepsAdjustment) || 0,
+        stepsProviderSource: daily.stepsProviderSource || null,
+      };
+      activityRef.current = next;
+      setActivity(next);
+    } catch {
+      // Keep the last known total; the next focus or app resume retries.
+    }
+  }, [selectedDay]);
+
   useFocusEffect(
     useCallback(() => {
       cargar();
-    }, [cargar]),
+      if (!isToday(selectedDay)) return undefined;
+      const interval = setInterval(refreshTodaySteps, 60_000);
+      return () => clearInterval(interval);
+    }, [cargar, refreshTodaySteps, selectedDay]),
   );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && isToday(selectedDay)) refreshTodaySteps();
+    });
+    return () => subscription?.remove?.();
+  }, [refreshTodaySteps, selectedDay]);
+
+  // Auto-track is on by default and remembered across restarts.
+  useEffect(() => {
+    let active = true;
+    storage.getItem(SENSOR_PREF_KEY)
+      .then((value) => {
+        if (active && value != null) setSensorOn(value === '1');
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const toggleSensor = useCallback(() => {
+    setSensorOn((current) => {
+      const next = !current;
+      storage.setItem(SENSOR_PREF_KEY, next ? '1' : '0').catch(() => {});
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     activityRef.current = activity;
@@ -154,7 +223,7 @@ export default function DashboardScreen() {
       pendingSave.current = null;
       if (!payload) return;
       patchDailyActivity(payload).catch((e) => {
-        setError(e.message || 'Could not save your activity.');
+        setError(friendlyError(e, 'Could not save your activity.'));
       });
     };
     if (immediate) flush();
@@ -199,7 +268,15 @@ export default function DashboardScreen() {
     [updateActivity],
   );
 
-  const sensorStatus = usePedometer(sensorOn && isToday(selectedDay), addSensorSteps);
+  const providerLabel = activity.stepsProviderSource === 'health_connect'
+    ? 'Health Connect'
+    : activity.stepsProviderSource === 'google_fit'
+      ? 'Google Fit'
+      : null;
+  // When a health provider already supplies today's total, the hardware sensor
+  // would only duplicate it, so it stays off and the provider total is used.
+  const sensorEnabled = sensorOn && isToday(selectedDay) && !providerLabel;
+  const sensorStatus = usePedometer(sensorEnabled, addSensorSteps);
 
   // Flush a pending activity save when the screen goes away.
   useEffect(
@@ -577,19 +654,26 @@ export default function DashboardScreen() {
       <View style={styles.cardHeaderRow}>
         <Text style={styles.cardTitle}>Activity</Text>
         {canUseSensor ? (
-          <TouchableOpacity
-            onPress={() => setSensorOn((v) => !v)}
-            style={[styles.sensorBtn, sensorOn && styles.sensorBtnOn]}
-          >
-            <Ionicons
-              name={sensorOn ? 'pulse' : 'footsteps-outline'}
-              size={13}
-              color={sensorOn ? colors.white : colors.primary}
-            />
-            <Text style={[styles.sensorText, sensorOn && styles.sensorTextOn]}>
-              {sensorOn ? 'Tracking' : 'Auto-track'}
-            </Text>
-          </TouchableOpacity>
+          providerLabel ? (
+            <View style={[styles.sensorBtn, styles.sensorBtnOn]}>
+              <Ionicons name="pulse" size={13} color={colors.white} />
+              <Text style={[styles.sensorText, styles.sensorTextOn]}>{providerLabel}</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={toggleSensor}
+              style={[styles.sensorBtn, sensorOn && styles.sensorBtnOn]}
+            >
+              <Ionicons
+                name={sensorOn ? 'pulse' : 'footsteps-outline'}
+                size={13}
+                color={sensorOn ? colors.white : colors.primary}
+              />
+              <Text style={[styles.sensorText, sensorOn && styles.sensorTextOn]}>
+                {sensorOn ? 'Tracking' : 'Auto-track'}
+              </Text>
+            </TouchableOpacity>
+          )
         ) : null}
       </View>
 
@@ -630,8 +714,8 @@ export default function DashboardScreen() {
       <Text style={styles.sensorHint}>
         {activity.stepsProviderSource
           ? (activity.stepsProviderSource === 'health_connect'
-            ? 'Health Connect total is used; device steps are stored separately to avoid double-counting.'
-            : 'Google Fit total is used; device steps are stored separately to avoid double-counting.')
+            ? 'Health Connect total is used; device steps are stored separately to avoid double-counting. It refreshes automatically while this screen is open and when you return to the app.'
+            : 'Google Fit total is used; device steps are stored separately to avoid double-counting. Sync Google Fit to refresh it.')
           : 'Steps come from this device sensor or manual adjustments.'}
       </Text>
 
@@ -645,8 +729,8 @@ export default function DashboardScreen() {
       <View style={styles.divider} />
 
       <View style={styles.activityRow}>
-        <View style={[styles.activityIcon, { backgroundColor: '#DBEAFE' }]}>
-          <Ionicons name="water-outline" size={20} color="#2563EB" />
+        <View style={[styles.activityIcon, { backgroundColor: colors.primarySoft }]}>
+          <Ionicons name="water-outline" size={20} color={colors.primary} />
         </View>
         <View style={styles.activityInfo}>
           <View style={styles.mealTopRow}>
@@ -866,7 +950,7 @@ export default function DashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -1117,10 +1201,10 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 3,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: colors.borderStrong,
     backgroundColor: colors.surface,
   },
-  glassFull: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
+  glassFull: { backgroundColor: colors.primary, borderColor: colors.primary },
   moreGlasses: { fontSize: font.xs, color: colors.textMuted, marginLeft: 2 },
   waterBtns: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' },
   waterBtn: {

@@ -6,10 +6,24 @@ import { createClient } from '@supabase/supabase-js';
 import { config, isSupabaseConfigured } from '../config';
 import { storage } from './storage';
 import { createDeadlineFetch } from '../utils/deadlineFetch.mjs';
+import { NO_INTERNET, isOfflineError, isOnline } from '../utils/networkErrors.mjs';
 
 let client = null;
 
 const fetchWithDeadline = createDeadlineFetch();
+
+// Every Supabase request (auth, tables and Edge Functions) goes through this
+// wrapper, so a lost connection fails fast with one standard message instead
+// of a raw "fetch failed" from the transport.
+async function fetchForSupabase(input, init) {
+  if (!isOnline()) throw new Error(NO_INTERNET);
+  try {
+    return await fetchWithDeadline(input, init);
+  } catch (error) {
+    if (isOfflineError(error)) throw new Error(NO_INTERNET);
+    throw error;
+  }
+}
 
 function getClient() {
   if (!client) {
@@ -17,7 +31,7 @@ function getClient() {
       throw new Error('Supabase is not configured. Fill in your .env file.');
     }
     client = createClient(config.supabaseUrl, config.supabaseAnonKey, {
-      global: { fetch: fetchWithDeadline },
+      global: { fetch: fetchForSupabase },
       auth: {
         persistSession: true,
         autoRefreshToken: true,

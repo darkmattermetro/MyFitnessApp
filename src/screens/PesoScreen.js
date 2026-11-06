@@ -18,7 +18,8 @@ import { Badge, Button, Card, ChipGroup, Container, EmptyState, Grid, GridItem, 
 import PeriodFilter, { periodRange } from '../components/PeriodFilter';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import {
   createWeightEntry,
   listWeightEntries,
@@ -26,6 +27,7 @@ import {
   getUser,
 } from '../services/api';
 import { weightProgress } from '../utils/nutricion';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 function formatFecha(iso) {
   const d = new Date(iso);
@@ -68,6 +70,8 @@ function decimar(lista, max) {
 export default function PesoScreen() {
   const { width } = useWindowDimensions();
   const { isDesktop } = useResponsive();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation();
   const [peso, setPeso] = useState('');
   const [entries, setEntries] = useState([]);
@@ -104,7 +108,7 @@ export default function PesoScreen() {
       setMeta(user.meta_peso_kg != null ? Number(user.meta_peso_kg) : null);
       setGoalType(user.goal_type ?? 'maintain');
     } catch (e) {
-      setError(e.message || 'Could not load your weight.');
+      setError(friendlyError(e, 'Could not load your weight.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -139,7 +143,7 @@ export default function PesoScreen() {
       setLista((prev) => [...prev, ...page.data]);
       setHasMore(page.hasMore);
     } catch (e) {
-      toast(e.message || 'Could not load more entries.', 'error');
+      toast(friendlyError(e, 'Could not load more entries.'), 'error');
       setCargandoMas(false);
     }
   };
@@ -157,7 +161,7 @@ export default function PesoScreen() {
       await cargar();
       toast('Weight logged.', 'success');
     } catch (e) {
-      toast(e.message || 'Could not save the weight.', 'error');
+      toast(friendlyError(e, 'Could not save the weight.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -174,7 +178,7 @@ export default function PesoScreen() {
       await cargar();
       toast('Entry deleted.', 'success');
     } catch (e) {
-      toast(e.message || 'Could not delete the entry.', 'error');
+      toast(friendlyError(e, 'Could not delete the entry.'), 'error');
       setEliminando(null);
     }
   };
@@ -473,7 +477,7 @@ export default function PesoScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },

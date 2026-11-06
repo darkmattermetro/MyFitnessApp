@@ -4,7 +4,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card } from './ui';
 import { useToast } from './Toast';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { friendlyError } from '../utils/networkErrors.mjs';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import {
   getHealthConnectLastSync,
   getHealthConnectStatus,
@@ -16,6 +18,8 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default function HealthConnectCard({ onOpenPrivacy }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { showToast } = useToast();
   const [status, setStatus] = useState(null);
   const [lastSync, setLastSync] = useState(null);
@@ -64,7 +68,7 @@ export default function HealthConnectCard({ onOpenPrivacy }) {
       if (/allow openfit|permission/i.test(error.message || '')) {
         setStatus((current) => current ? { ...current, permissionGranted: false } : current);
       }
-      if (!automatic) showToast(error.message || 'Health Connect step sync failed.', 'error');
+      if (!automatic) showToast(friendlyError(error, 'Health Connect step sync failed.'), 'error');
     } finally {
       setSyncing(false);
       if (automatic) autoSyncing.current = false;
@@ -87,7 +91,7 @@ export default function HealthConnectCard({ onOpenPrivacy }) {
       if (granted) showToast('Steps access granted. Importing your recent data.', 'success');
       else showToast('Steps access was not granted. You can change it in Health Connect settings.');
     } catch (error) {
-      showToast(error.message || 'Could not connect Health Connect.', 'error');
+      showToast(friendlyError(error, 'Could not connect Health Connect.'), 'error');
       await refresh();
     } finally {
       setConnecting(false);
@@ -98,7 +102,7 @@ export default function HealthConnectCard({ onOpenPrivacy }) {
     try {
       await openHealthConnectPermissions();
     } catch (error) {
-      showToast(error.message || 'Could not open Health Connect settings.', 'error');
+      showToast(friendlyError(error, 'Could not open Health Connect settings.'), 'error');
     }
   };
 
@@ -133,9 +137,9 @@ export default function HealthConnectCard({ onOpenPrivacy }) {
       ) : (
         <>
           <Text style={styles.hint}>
-            Read daily steps, active calories, and sleep totals from Health Connect for your charts and AI coach. You choose which read permissions to grant. Sync runs when Profile opens at most once a day, or you can sync now.
+            Read daily steps, active calories, and sleep totals from Health Connect for your charts and AI coach. You choose which read permissions to grant. Today's steps now refresh automatically on the Today screen and when you return to the app; use the button below to import the full 7-day history.
           </Text>
-          {lastSync ? <Text style={styles.meta}>Last sync: {new Date(lastSync).toLocaleString()}</Text> : null}
+          {lastSync ? <Text style={styles.meta}>Last full sync: {new Date(lastSync).toLocaleString()}</Text> : null}
           <Text style={styles.meta}>Provider totals replace the last provider total. Phone sensor counts and manual corrections are stored separately so syncing will not double-count steps.</Text>
           <View style={styles.actions}>
             {!status.metricsGranted ? (
@@ -164,7 +168,7 @@ export default function HealthConnectCard({ onOpenPrivacy }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   card: { marginBottom: spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   title: { flex: 1, fontSize: font.base, fontWeight: '700', color: colors.text },

@@ -19,6 +19,12 @@ const DATA_PERMISSIONS = [
   { accessType: 'read', recordType: 'SleepSession' },
 ];
 
+// Today's totals refresh often (screen focus, app resume, once a minute while
+// Today is open). This module-level timestamp keeps those refreshes cheap for
+// the lifetime of the app process. It is intentionally not persisted: every
+// cold start should import the latest Health Connect value once.
+let lastAutoSyncAt = 0;
+
 async function readyClient() {
   const status = await getSdkStatus();
   if (status === SdkAvailabilityStatus.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
@@ -101,6 +107,53 @@ export async function getHealthConnectLastSync() {
   return secureStorage.getItem(LAST_SYNC_KEY);
 }
 
+async function stepsForRange(start, end) {
+  const groups = await aggregateGroupByPeriod({
+    recordType: 'Steps',
+    timeRangeFilter: {
+      operator: 'between',
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+    },
+    timeRangeSlicer: { period: 'DAYS', length: 1 },
+  });
+
+  return (groups || []).map((group) => ({
+    day: dayKey(new Date(group.startTime)),
+    steps: Math.max(0, Math.round(Number(group.result?.COUNT_TOTAL) || 0)),
+  })).filter((row) => row.day);
+}
+
+// Keep today's step total in sync without the user opening Profile or tapping
+// Sync. Runs on Today focus, on app resume, and once a minute while Today is
+// visible. Only the current day is written, so it stays fast and cheap.
+export async function autoSyncHealthConnectToday({ minIntervalMs = 60_000 } = {}) {
+  if (Date.now() - lastAutoSyncAt < minIntervalMs) return { skipped: true };
+
+  const status = await getHealthConnectStatus();
+  if (!status.available || !status.permissionGranted) return { skipped: true };
+
+  const end = new Date();
+  const start = new Date(end);
+  start.setHours(0, 0, 0, 0);
+
+  const rows = await stepsForRange(start, end);
+  const day = dayKey(end);
+  const steps = rows.find((row) => row.day === day)?.steps ?? 0;
+
+  const current = await getDailyActivity(day);
+  const unchanged =
+    current?.stepsProvider != null &&
+    Number(current.stepsProvider) === steps &&
+    current?.stepsProviderSource === 'health_connect';
+  if (!unchanged) {
+    await patchDailyActivity({ day, stepsProvider: steps, providerSource: 'health_connect' });
+  }
+
+  lastAutoSyncAt = Date.now();
+  return { synced: true, day, steps, updated: !unchanged };
+}
+
 export async function syncHealthConnectSteps(days = 7) {
   const status = await getHealthConnectStatus();
   if (!status.available) {
@@ -120,20 +173,7 @@ export async function syncHealthConnectSteps(days = 7) {
 
   // Period grouping follows local calendar days. Health Connect aggregates
   // overlapping sources for Steps, avoiding double-counting Fitbit/phone data.
-  const groups = await aggregateGroupByPeriod({
-    recordType: 'Steps',
-    timeRangeFilter: {
-      operator: 'between',
-      startTime: start.toISOString(),
-      endTime: end.toISOString(),
-    },
-    timeRangeSlicer: { period: 'DAYS', length: 1 },
-  });
-
-  const imported = (groups || []).map((group) => ({
-    day: dayKey(new Date(group.startTime)),
-    steps: Math.max(0, Math.round(Number(group.result?.COUNT_TOTAL) || 0)),
-  })).filter((row) => row.day);
+  const imported = await stepsForRange(start, end);
 
   let updated = 0;
   for (const { day, steps } of imported) {

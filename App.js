@@ -1,21 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import AppNavigator from './src/navigation/AppNavigator';
 import AuthScreen from './src/screens/AuthScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import ToastProvider from './src/components/Toast';
-import { colors, font, radius, spacing } from './src/theme/colors';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { font, radius, spacing } from './src/theme/colors';
 import { getSession, onAuthStateChange, isDemoMode } from './src/services/auth';
 import { supabase } from './src/services/supabaseClient';
+import { friendlyError } from './src/utils/networkErrors.mjs';
 
 const IS_WEB = Platform.OS === 'web';
 
 const DemoBanner = () => {
   const demo = isDemoMode();
+  const { colors } = useTheme();
   return (
     <View
       style={{
@@ -37,11 +40,28 @@ const DemoBanner = () => {
   );
 };
 
-export default function App() {
+function AppShell() {
+  const { colors, isDark } = useTheme();
   const [session, setSession] = useState(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(null);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+
+  const navigationTheme = useMemo(() => {
+    const base = isDark ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: colors.primary,
+        background: colors.background,
+        card: colors.surface,
+        text: colors.text,
+        border: colors.border,
+        notification: colors.danger,
+      },
+    };
+  }, [colors, isDark]);
 
   const iniciar = async () => {
     setReady(false);
@@ -50,7 +70,7 @@ export default function App() {
       const s = await getSession();
       setSession(s);
     } catch (e) {
-      setError(e.message || 'The app could not start.');
+      setError(friendlyError(e, 'The app could not start.'));
     } finally {
       setReady(true);
     }
@@ -67,7 +87,7 @@ export default function App() {
       })
       .catch((e) => {
         if (activo) {
-          setError(e.message || 'The app could not start.');
+          setError(friendlyError(e, 'The app could not start.'));
           setReady(true);
         }
       });
@@ -134,8 +154,8 @@ export default function App() {
       <SafeAreaProvider>
         <ToastProvider>
           {IS_WEB && <DemoBanner />}
-          <NavigationContainer>
-            <StatusBar style="auto" />
+          <NavigationContainer theme={navigationTheme}>
+            <StatusBar style={isDark ? 'light' : 'dark'} />
             {session
               ? passwordRecovery
                 ? <ResetPasswordScreen onComplete={() => setPasswordRecovery(false)} />
@@ -145,5 +165,13 @@ export default function App() {
         </ToastProvider>
       </SafeAreaProvider>
     </ErrorBoundary>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppShell />
+    </ThemeProvider>
   );
 }

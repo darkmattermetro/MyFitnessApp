@@ -9,7 +9,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -75,7 +76,7 @@ export function GridItem({ cols = 2, children, style }) {
   );
 }
 
-export const cardShadow = (() => {
+export const cardShadow = (colors) => {
   const base = {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -96,13 +97,14 @@ export const cardShadow = (() => {
     shadowRadius: 8,
     elevation: 2,
   };
-})();
+};
 
 export function Card({ children, style, muted = false, pad = true }) {
+  const { colors } = useTheme();
   return (
     <View
       style={[
-        cardShadow,
+        cardShadow(colors),
         pad && { padding: spacing.md },
         muted && { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
         style,
@@ -114,6 +116,7 @@ export function Card({ children, style, muted = false, pad = true }) {
 }
 
 export function SectionLabel({ children, style }) {
+  const { colors } = useTheme();
   return (
     <Text
       style={[
@@ -135,6 +138,7 @@ export function SectionLabel({ children, style }) {
 
 // ---- Form ----
 export function Input({ style, ...props }) {
+  const { colors } = useTheme();
   return (
     <TextInput
       placeholderTextColor={colors.textMuted}
@@ -156,8 +160,9 @@ export function Input({ style, ...props }) {
   );
 }
 
-export function PasswordInput({ style, ...props }) {
+export function PasswordInput({ style, secureTextEntry = true, ...props }) {
   const [visible, setVisible] = useState(false);
+  const { colors } = useTheme();
   return (
     <View
       style={[
@@ -175,17 +180,22 @@ export function PasswordInput({ style, ...props }) {
     >
       <TextInput
         placeholderTextColor={colors.textMuted}
-        secureTextEntry={!visible}
+        secureTextEntry={secureTextEntry && !visible}
         style={{ flex: 1, fontSize: font.md, color: colors.text, paddingVertical: spacing.md }}
         {...props}
       />
       <TouchableOpacity
-        onPress={() => setVisible((v) => !v)}
+        onPressIn={() => setVisible((v) => !v)}
+        accessibilityRole="button"
+        accessibilityLabel={visible ? 'Hide value' : 'Show value'}
         hitSlop={8}
-        style={[
-          !visible && { opacity: 0.55 },
-          IS_WEB ? { cursor: 'pointer' } : null,
-        ]}
+        style={{
+          minWidth: 44,
+          minHeight: 44,
+          alignItems: 'center',
+          justifyContent: 'center',
+          ...(IS_WEB ? { cursor: 'pointer' } : {}),
+        }}
       >
         <Ionicons
           name={visible ? 'eye-outline' : 'eye-off-outline'}
@@ -198,6 +208,7 @@ export function PasswordInput({ style, ...props }) {
 }
 
 export function Field({ label, hint, children }) {
+  const { colors } = useTheme();
   return (
     <View style={{ marginBottom: spacing.md }}>
       {label ? (
@@ -233,6 +244,7 @@ export function Button({
   icon,
 }) {
   const [hovered, setHovered] = useState(false);
+  const { colors } = useTheme();
   const palettes = {
     primary: { bg: colors.primary, border: colors.primary, textColor: colors.white },
     secondary: { bg: colors.surface, border: colors.borderStrong, textColor: colors.text },
@@ -286,6 +298,7 @@ export function Button({
 
 // ---- Chip group (segmented) ----
 export function ChipGroup({ options, value, onChange }) {
+  const { colors } = useTheme();
   return (
     <View
       style={{
@@ -340,6 +353,7 @@ export function ChipGroup({ options, value, onChange }) {
 
 // ---- Empty / badges ----
 export function EmptyState({ icon = 'leaf-outline', title, hint }) {
+  const { colors } = useTheme();
   return (
     <Card style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
       <View
@@ -368,6 +382,7 @@ export function EmptyState({ icon = 'leaf-outline', title, hint }) {
 }
 
 export function Badge({ children, tone = 'primary' }) {
+  const { colors } = useTheme();
   const tones = {
     primary: { bg: colors.primarySoft, text: colors.primaryDark },
     danger: { bg: colors.dangerSoft, text: colors.danger },
@@ -382,4 +397,4 @@ export function Badge({ children, tone = 'primary' }) {
   );
 }
 
-export { colors, font, radius, spacing };
+export { font, radius, spacing };

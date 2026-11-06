@@ -1,8 +1,9 @@
 import { Text, View } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
-const MACROS = [
+const macrosFor = (colors) => [
   { key: 'protein', label: 'Protein', color: colors.primary, kcalPerGram: 4 },
   { key: 'carbs', label: 'Carbs', color: colors.warning, kcalPerGram: 4 },
   { key: 'fat', label: 'Fat', color: colors.danger, kcalPerGram: 9 },
@@ -11,10 +12,11 @@ const MACROS = [
 // Ring chart of where today's calories come from. Slices are sized by the
 // energy each macro contributes (protein/carbs 4 kcal/g, fat 9 kcal/g).
 export default function MacroDonut({ macros, kcal = 0, size = 132, stroke = 14 }) {
+  const { colors } = useTheme();
   const radiusValue = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radiusValue;
 
-  const values = MACROS.map((macro) => {
+  const values = macrosFor(colors).map((macro) => {
     const grams = Number(macros?.[macro.key]) || 0;
     return { ...macro, grams, energy: grams * macro.kcalPerGram };
   });

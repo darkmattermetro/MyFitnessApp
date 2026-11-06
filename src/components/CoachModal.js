@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,12 +13,40 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useResponsive } from './ui';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { coachReply } from '../services/api';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 const IS_WEB = Platform.OS === 'web';
+
+// Mobile browsers shrink the visual viewport for the on-screen keyboard but
+// leave the layout viewport alone, so a bottom-anchored sheet stays hidden.
+// Track the covered area and lift the sheet like a native keyboard would.
+function useWebKeyboardInset() {
+  const [inset, setInset] = useState(0);
+  useEffect(() => {
+    if (!IS_WEB || typeof window === 'undefined' || !window.visualViewport) {
+      return undefined;
+    }
+    const viewport = window.visualViewport;
+    const update = () => {
+      const hidden = window.innerHeight - (viewport.height + viewport.offsetTop);
+      setInset(hidden > 120 ? Math.round(hidden) : 0);
+    };
+    update();
+    viewport.addEventListener('resize', update);
+    viewport.addEventListener('scroll', update);
+    return () => {
+      viewport.removeEventListener('resize', update);
+      viewport.removeEventListener('scroll', update);
+    };
+  }, []);
+  return inset;
+}
 
 const SUGGESTIONS = [
   'Create my personalized 20-minute home workout and vegetarian meal plan for today.',
@@ -34,25 +63,63 @@ function uid() {
   return `msg-${Date.now()}-${counter}`;
 }
 
-export default function CoachModal({ visible, onClose, context, onOpenProfile }) {
+export default function CoachModal({
+  visible,
+  onClose,
+  context,
+  onOpenProfile,
+  title = 'AI Coach',
+  suggestions = SUGGESTIONS,
+  welcome = WELCOME,
+}) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { isDesktop } = useResponsive();
   const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const webKeyboardInset = useWebKeyboardInset();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [failedMessage, setFailedMessage] = useState(null);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const scrollRef = useRef(null);
   const requestRef = useRef(null);
   const sendingRef = useRef(false);
+  const atBottomRef = useRef(true);
+
+  const scrollToEnd = useCallback((animated = true) => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated });
+    });
+  }, []);
 
   useEffect(() => {
     if (visible && messages.length === 0) {
-      setMessages([{ id: 'welcome', role: 'coach', text: WELCOME }]);
+      setMessages([{ id: 'welcome', role: 'coach', text: welcome }]);
     }
-  }, [visible, messages.length]);
+  }, [visible, messages.length, welcome]);
 
   useEffect(() => () => requestRef.current?.abort(), []);
+
+  // Keep the input (and the latest message) above the keyboard on native.
+  useEffect(() => {
+    if (!visible || IS_WEB) return undefined;
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, () => {
+      setKeyboardOpen(true);
+      atBottomRef.current = true;
+      scrollToEnd(false);
+    });
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardOpen(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [visible, scrollToEnd]);
 
   const close = () => {
     requestRef.current?.abort();
@@ -87,7 +154,7 @@ export default function CoachModal({ visible, onClose, context, onOpenProfile })
         if (userMessage) setMessages((prev) => prev.filter((message) => message.id !== userMessage.id));
         setInput((current) => current.trim() ? current : question);
       } else {
-        setError(e.message || 'Could not reach the coach. Please try again.');
+        setError(friendlyError(e, 'Could not reach the coach. Please try again.'));
         setFailedMessage({ id: userMessage?.id || retry?.id, text: question });
         setInput((current) => current.trim() ? current : question);
       }
@@ -103,152 +170,188 @@ export default function CoachModal({ visible, onClose, context, onOpenProfile })
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
-      <View style={[styles.backdrop, isDesktop && styles.backdropDesktop]}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.avoider}
+      >
+        <View
           style={[
-            styles.sheet,
-            {
-              height: isDesktop ? Math.min(600, Math.max(460, height * 0.8)) : height * 0.86,
-            },
-            isDesktop && styles.sheetDesktop,
+            styles.backdrop,
+            isDesktop && styles.backdropDesktop,
+            webKeyboardInset > 0 && { paddingBottom: webKeyboardInset },
           ]}
         >
-          <View style={styles.header}>
-            <View style={styles.avatar}>
-              <Ionicons name="sparkles" size={18} color={colors.primaryDark} />
-            </View>
-            <View style={styles.headerInfo}>
-              <Text style={styles.title}>AI Coach</Text>
-              <Text style={styles.subtitle}>Powered by Gemini · your own key</Text>
-            </View>
-            <TouchableOpacity onPress={close} hitSlop={10} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            ref={scrollRef}
-            style={styles.messages}
-            contentContainerStyle={styles.messagesContent}
-            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
-            keyboardShouldPersistTaps="handled"
+          <View
+            style={[
+              styles.sheet,
+              isDesktop
+                ? { height: Math.min(600, Math.max(460, height * 0.8)) }
+                : styles.sheetMobile,
+              isDesktop && styles.sheetDesktop,
+            ]}
           >
-            {messages.map((message) => {
-              const mine = message.role === 'user';
-              return (
-                <View
-                  key={message.id}
-                  style={[styles.bubbleRow, mine ? styles.bubbleRowMine : styles.bubbleRowCoach]}
-                >
-                  {!mine ? (
-                    <View style={styles.bubbleAvatar}>
-                      <Ionicons name="sparkles" size={12} color={colors.primaryDark} />
+            <View style={styles.header}>
+              <View style={styles.avatar}>
+                <Ionicons name="sparkles" size={18} color={colors.primaryDark} />
+              </View>
+              <View style={styles.headerInfo}>
+                <Text style={styles.title}>{title}</Text>
+                <Text style={styles.subtitle}>Powered by Gemini · your own key</Text>
+              </View>
+              <TouchableOpacity onPress={close} hitSlop={10} style={styles.closeBtn}>
+                <Ionicons name="close" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              ref={scrollRef}
+              style={styles.messages}
+              contentContainerStyle={styles.messagesContent}
+              onContentSizeChange={() => {
+                if (atBottomRef.current) scrollToEnd(false);
+              }}
+              onScroll={(event) => {
+                const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+                atBottomRef.current =
+                  contentOffset.y + layoutMeasurement.height >= contentSize.height - 24;
+              }}
+              scrollEventThrottle={16}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            >
+              {messages.map((message) => {
+                const mine = message.role === 'user';
+                return (
+                  <View
+                    key={message.id}
+                    style={[styles.bubbleRow, mine ? styles.bubbleRowMine : styles.bubbleRowCoach]}
+                  >
+                    {!mine ? (
+                      <View style={styles.bubbleAvatar}>
+                        <Ionicons name="sparkles" size={12} color={colors.primaryDark} />
+                      </View>
+                    ) : null}
+                    <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleCoach]}>
+                      <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>
+                        {message.text}
+                      </Text>
                     </View>
-                  ) : null}
-                  <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleCoach]}>
-                    <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>
-                      {message.text}
-                    </Text>
+                  </View>
+                );
+              })}
+
+              {sending ? (
+                <View style={[styles.bubbleRow, styles.bubbleRowCoach]}>
+                  <View style={styles.bubbleAvatar}>
+                    <Ionicons name="sparkles" size={12} color={colors.primaryDark} />
+                  </View>
+                  <View style={[styles.bubble, styles.bubbleCoach, styles.typing]}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.typingText}>Thinking…</Text>
                   </View>
                 </View>
-              );
-            })}
+              ) : null}
 
-            {sending ? (
-              <View style={[styles.bubbleRow, styles.bubbleRowCoach]}>
-                <View style={styles.bubbleAvatar}>
-                  <Ionicons name="sparkles" size={12} color={colors.primaryDark} />
+              {!hasUserMessage ? (
+                <View style={styles.suggestions}>
+                  {suggestions.map((suggestion) => (
+                    <TouchableOpacity
+                      key={suggestion}
+                      style={styles.suggestion}
+                      onPress={() => send(suggestion)}
+                      disabled={sending}
+                    >
+                      <Text style={styles.suggestionText}>{suggestion}</Text>
+                      <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+                    </TouchableOpacity>
+                  ))}
                 </View>
-                <View style={[styles.bubble, styles.bubbleCoach, styles.typing]}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={styles.typingText}>Thinking…</Text>
+              ) : null}
+
+              {error ? (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>{error}</Text>
+                  {failedMessage ? (
+                    <TouchableOpacity style={styles.retryBtn} onPress={() => send(failedMessage.text, failedMessage)} disabled={sending}>
+                      <Text style={styles.retryBtnText}>Retry message</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {needsKey && onOpenProfile ? (
+                    <TouchableOpacity
+                      style={styles.errorBtn}
+                      onPress={() => {
+                        onClose();
+                        onOpenProfile();
+                      }}
+                    >
+                      <Text style={styles.errorBtnText}>Open Profile</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
-              </View>
-            ) : null}
+              ) : null}
+            </ScrollView>
 
-            {!hasUserMessage ? (
-              <View style={styles.suggestions}>
-                {SUGGESTIONS.map((suggestion) => (
-                  <TouchableOpacity
-                    key={suggestion}
-                    style={styles.suggestion}
-                    onPress={() => send(suggestion)}
-                    disabled={sending}
-                  >
-                    <Text style={styles.suggestionText}>{suggestion}</Text>
-                    <Ionicons name="arrow-forward" size={14} color={colors.primary} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : null}
-
-            {error ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{error}</Text>
-                {failedMessage ? (
-                  <TouchableOpacity style={styles.retryBtn} onPress={() => send(failedMessage.text, failedMessage)} disabled={sending}>
-                    <Text style={styles.retryBtnText}>Retry message</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {needsKey && onOpenProfile ? (
-                  <TouchableOpacity
-                    style={styles.errorBtn}
-                    onPress={() => {
-                      onClose();
-                      onOpenProfile();
-                    }}
-                  >
-                    <Text style={styles.errorBtnText}>Open Profile</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            ) : null}
-          </ScrollView>
-
-          <View style={styles.inputRow}>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder={IS_WEB ? 'Message your coach… (Shift+Enter for a new line)' : 'Message your coach…'}
-              placeholderTextColor={colors.textMuted}
-              style={styles.input}
-              multiline
-              maxLength={800}
-              accessibilityLabel="Message your AI coach"
-              accessibilityHint="Type a question. Use the arrow button to send."
-              submitBehavior="newline"
-              onKeyPress={IS_WEB ? (event) => {
-                if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey && !event.nativeEvent.isComposing) {
-                  event.preventDefault?.();
-                  send();
-                }
-              } : undefined}
-            />
-            <TouchableOpacity
+            <View
               style={[
-                styles.sendBtn,
-                (!input.trim() || sending) && { opacity: 0.45 },
+                styles.inputRow,
+                {
+                  paddingBottom: keyboardOpen
+                    ? spacing.sm + 2
+                    : Math.max(spacing.md, insets.bottom + spacing.xs),
+                },
               ]}
-              onPress={() => send()}
-              disabled={!input.trim() || sending}
-              accessibilityRole="button"
-              accessibilityLabel="Send message to AI coach"
             >
-              {sending ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Ionicons name="arrow-up" size={20} color={colors.white} />
-              )}
-            </TouchableOpacity>
+              <TextInput
+                value={input}
+                onChangeText={setInput}
+                placeholder={IS_WEB ? 'Message your coach… (Shift+Enter for a new line)' : 'Message your coach…'}
+                placeholderTextColor={colors.textMuted}
+                style={[styles.input, inputFocused && styles.inputFocused]}
+                multiline
+                maxLength={800}
+                selectionColor={colors.primary}
+                accessibilityLabel="Message your AI coach"
+                accessibilityHint="Type a question. Use the arrow button to send."
+                submitBehavior="newline"
+                onFocus={() => {
+                  setInputFocused(true);
+                  atBottomRef.current = true;
+                  scrollToEnd();
+                }}
+                onBlur={() => setInputFocused(false)}
+                onKeyPress={IS_WEB ? (event) => {
+                  if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault?.();
+                    send();
+                  }
+                } : undefined}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.sendBtn,
+                  (!input.trim() || sending) && { opacity: 0.45 },
+                ]}
+                onPress={() => send()}
+                disabled={!input.trim() || sending}
+                accessibilityRole="button"
+                accessibilityLabel="Send message to AI coach"
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <Ionicons name="arrow-up" size={20} color={colors.white} />
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-        </KeyboardAvoidingView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
+  avoider: { flex: 1 },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.45)',
@@ -261,7 +364,11 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     overflow: 'hidden',
+    ...(IS_WEB
+      ? { boxShadow: '0 -16px 48px rgba(0, 0, 0, 0.32)' }
+      : { elevation: 24, shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 24, shadowOffset: { width: 0, height: -6 } }),
   },
+  sheetMobile: { height: '92%' },
   sheetDesktop: { maxWidth: 620, borderRadius: 20 },
   header: {
     flexDirection: 'row',
@@ -366,6 +473,8 @@ const styles = StyleSheet.create({
     maxHeight: 96,
     minHeight: 44,
     backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
@@ -374,6 +483,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     ...(IS_WEB ? { outlineStyle: 'none' } : {}),
   },
+  inputFocused: { borderColor: colors.primary },
   sendBtn: {
     width: 44,
     height: 44,

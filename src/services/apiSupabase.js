@@ -5,6 +5,7 @@ import { supabase } from './supabaseClient';
 import { config } from '../config';
 import { getCurrentUserId } from './auth';
 import { parseFoodConKey, mejorarPreferenciaConKey, analyzeFoodImageConKey, coachReplyConKey } from './gemini';
+import { friendlyError } from '../utils/networkErrors.mjs';
 import { guessMealType } from '../utils/nutricion';
 import { readStoredGeminiKey, writeStoredGeminiKey, hasMigratedLegacyGeminiKey, markLegacyGeminiKeyMigrated } from './aiKeyStore';
 import { ensureAIDataConsent } from './aiConsent';
@@ -434,12 +435,28 @@ export async function createUserPreference(texto) {
   return data;
 }
 
+export async function updateUserPreference(id, texto) {
+  assertConfigured();
+  const uid = await requireUserId();
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .update({ texto })
+    .eq('id', id)
+    .eq('user_id', uid)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteUserPreference(id) {
   assertConfigured();
+  const uid = await requireUserId();
   const { error } = await supabase
     .from('user_preferences')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('user_id', uid);
   if (error) throw error;
 }
 
@@ -481,7 +498,7 @@ export async function generateDailyCalorieSuggestion(sourceDay) {
   const { data, error } = await supabase.functions.invoke('suggest-next-day-calories', {
     body: { sourceDay },
   });
-  if (error) throw new Error(error.message || 'Could not prepare a calorie suggestion.');
+  if (error) throw new Error(friendlyError(error, 'Could not prepare a calorie suggestion.'));
   if (data?.error) throw new Error(data.error);
   return data;
 }

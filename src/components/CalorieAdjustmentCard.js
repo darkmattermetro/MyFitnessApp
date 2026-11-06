@@ -4,9 +4,13 @@ import { Button, Card, SectionLabel } from './ui';
 import { useToast } from './Toast';
 import { generateDailyCalorieSuggestion } from '../services/api';
 import { addDays, dayKey } from '../utils/dates';
-import { colors, font, spacing } from '../theme/colors';
+import { font, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 export default function CalorieAdjustmentCard({ onApply }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [loading, setLoading] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   const [applied, setApplied] = useState(false);
@@ -19,7 +23,7 @@ export default function CalorieAdjustmentCard({ onApply }) {
       setSuggestion(await generateDailyCalorieSuggestion(sourceDay));
       setApplied(false);
     } catch (error) {
-      showToast(error.message || 'Could not prepare a calorie suggestion.', 'error');
+      showToast(friendlyError(error, 'Could not prepare a calorie suggestion.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -32,7 +36,7 @@ export default function CalorieAdjustmentCard({ onApply }) {
       setApplied(true);
       showToast('The suggested calorie goal was saved to your profile.', 'success');
     } catch (error) {
-      showToast(error.message || 'Could not save the suggested calorie goal.', 'error');
+      showToast(friendlyError(error, 'Could not save the suggested calorie goal.'), 'error');
     }
   };
 
@@ -62,7 +66,7 @@ export default function CalorieAdjustmentCard({ onApply }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   card: { marginBottom: spacing.md },
   copy: { color: colors.textMuted, fontSize: font.sm, lineHeight: 19, marginBottom: spacing.sm },
   spinner: { marginVertical: spacing.sm },

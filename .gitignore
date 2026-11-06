@@ -53,3 +53,6 @@ opencode.md
 # Vercel CLI pulled env (contains secrets)
 .env.vercel
 .env*.vercel
+
+# Supabase CLI local link state
+supabase/.temp/

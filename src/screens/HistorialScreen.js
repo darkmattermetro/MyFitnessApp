@@ -18,13 +18,15 @@ import { Badge, Button, Card, ChipGroup, Container, EmptyState, Field, Input, Se
 import PeriodFilter, { periodRange } from '../components/PeriodFilter';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import {
   listFoodEntries,
   updateFoodEntry,
   deleteFoodEntry,
 } from '../services/api';
 import { MEAL_LABEL, MEAL_TYPES, mealTypeOf } from '../utils/nutricion';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 function parseFecha(iso) {
   const d = new Date(iso);
@@ -89,6 +91,8 @@ const PAGE = 30;
 
 export default function HistorialScreen() {
   const { isDesktop } = useResponsive();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [entries, setEntries] = useState([]);
   const [periodo, setPeriodo] = useState('7d');
   const [hasMore, setHasMore] = useState(false);
@@ -110,7 +114,7 @@ export default function HistorialScreen() {
       setEntries(res.data);
       setHasMore(res.hasMore);
     } catch (e) {
-      setError(e.message || 'Could not load your history.');
+      setError(friendlyError(e, 'Could not load your history.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -144,7 +148,7 @@ export default function HistorialScreen() {
       setEntries((prev) => [...prev, ...res.data]);
       setHasMore(res.hasMore);
     } catch (e) {
-      toast(e.message || 'Could not load more entries.', 'error');
+      toast(friendlyError(e, 'Could not load more entries.'), 'error');
       setCargandoMas(false);
     }
   };
@@ -228,7 +232,7 @@ export default function HistorialScreen() {
       await cargar();
       toast('Changes saved.', 'success');
     } catch (e) {
-      toast(e.message || 'Could not save the changes.', 'error');
+      toast(friendlyError(e, 'Could not save the changes.'), 'error');
     } finally {
       setGuardando(false);
     }
@@ -247,7 +251,7 @@ export default function HistorialScreen() {
       await cargar();
       toast('Meal deleted.', 'success');
     } catch (e) {
-      toast(e.message || 'Could not delete the meal.', 'error');
+      toast(friendlyError(e, 'Could not delete the meal.'), 'error');
       setEliminando(null);
     } finally {
       setGuardando(false);
@@ -558,7 +562,7 @@ export default function HistorialScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },

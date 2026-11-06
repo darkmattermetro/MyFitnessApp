@@ -19,6 +19,7 @@ import {
   Container,
   Field,
   Input,
+  PasswordInput,
   SectionLabel,
   Grid,
   GridItem,
@@ -29,9 +30,9 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import GoogleFitCard from '../components/GoogleFitCard';
 import HealthConnectCard from '../components/HealthConnectCard';
 import PrivacyPolicyModal from '../components/PrivacyPolicyModal';
-import ShiftReminderCard from '../components/ShiftReminderCard';
 import CalorieAdjustmentCard from '../components/CalorieAdjustmentCard';
-import { colors, font, spacing, radius } from '../theme/colors';
+import { font, spacing, radius } from '../theme/colors';
+import { useTheme, useThemedStyles, THEME_MODES } from '../theme/ThemeContext';
 import {
   getUser,
   updateUser,
@@ -55,8 +56,12 @@ import {
   clasificarIMC,
   calcularBMR,
   calcularCaloriasRecomendadas,
+  bmiInterpretation,
+  healthyWeightRange,
+  waistToHeightRatio,
   NIVELES_ACTIVIDAD,
 } from '../utils/nutricion';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 function normalizeSex(value) {
   return value === 'female' || value === 'mujer' ? 'female' : 'male';
@@ -64,11 +69,17 @@ function normalizeSex(value) {
 
 export default function PerfilScreen() {
   const { isDesktop } = useResponsive();
+  const { colors, mode, setMode } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [objetivoKcal, setObjetivoKcal] = useState('');
   const [metaPeso, setMetaPeso] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [savingApiKey, setSavingApiKey] = useState(false);
+  const [apiKeyStatus, setApiKeyStatus] = useState('');
   const [email, setEmail] = useState(null);
   const [pesoActual, setPesoActual] = useState('');
+  const [cinturaCm, setCinturaCm] = useState('');
+  const [asianBackground, setAsianBackground] = useState(false);
   const [alturaCm, setAlturaCm] = useState('');
   const [edad, setEdad] = useState('');
   const [sexo, setSexo] = useState('male');
@@ -114,7 +125,7 @@ export default function PerfilScreen() {
         pesos.length > 0 ? String(pesos[pesos.length - 1].peso_kg) : '',
       );
     } catch (e) {
-      toast(e.message || 'Could not load your profile.', 'error');
+      toast(friendlyError(e, 'Could not load your profile.'), 'error');
     } finally {
       setLoading(false);
       reloadingRef.current = false;
@@ -137,7 +148,7 @@ export default function PerfilScreen() {
       }
       await signOut();
     } catch (e) {
-      toast(e.message || 'Could not sign out.', 'error');
+      toast(friendlyError(e, 'Could not sign out.'), 'error');
     }
   };
 
@@ -187,7 +198,7 @@ export default function PerfilScreen() {
         await Sharing.shareAsync(uri, { mimeType: 'application/json', dialogTitle: 'Export OpenFit data', UTI: 'public.json' });
       }
     } catch (e) {
-      toast(e.message || 'Could not export your data.', 'error');
+      toast(friendlyError(e, 'Could not export your data.'), 'error');
     } finally {
       setExporting(false);
     }
@@ -195,7 +206,6 @@ export default function PerfilScreen() {
 
   const guardar = async (overrides = {}) => {
     try {
-      await setGeminiApiKey(apiKey.trim());
       await updateUser({
         objetivoKcal: overrides.objetivoKcal ?? (Number(objetivoKcal) || 2000),
         metaPesoKg: metaPeso ? Number(metaPeso) : null,
@@ -210,8 +220,27 @@ export default function PerfilScreen() {
       setEstado('guardado');
     } catch (e) {
       setEstado('error');
-      toast(e.message || 'Could not save.', 'error');
+      toast(friendlyError(e, 'Could not save.'), 'error');
       if (overrides.throwOnError) throw e;
+    }
+  };
+
+  // Keep the key separate from the profile auto-save. SecureStore writes can
+  // take longer than a normal text edit on Android, which made the old
+  // debounced auto-save interrupt or overwrite typing in this field.
+  const saveApiKey = async () => {
+    setSavingApiKey(true);
+    setApiKeyStatus('');
+    try {
+      await setGeminiApiKey(apiKey.trim());
+      setApiKeyStatus(apiKey.trim() ? 'API key saved securely on this device.' : 'API key removed from this device.');
+      toast(apiKey.trim() ? 'Gemini API key saved.' : 'Gemini API key removed.', 'success');
+    } catch (e) {
+      const message = friendlyError(e, 'Could not save the API key.');
+      setApiKeyStatus(message);
+      toast(message, 'error');
+    } finally {
+      setSavingApiKey(false);
     }
   };
 
@@ -223,7 +252,7 @@ export default function PerfilScreen() {
       setConfirmarBorradoCuenta(false);
       toast('Your account and cloud data were deleted.', 'success');
     } catch (e) {
-      toast(e.message || 'Could not delete your account.', 'error');
+      toast(friendlyError(e, 'Could not delete your account.'), 'error');
     } finally {
       setDeletingAccount(false);
     }
@@ -238,10 +267,13 @@ export default function PerfilScreen() {
     }, 800);
     return () => clearTimeout(timerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [objetivoKcal, metaPeso, apiKey, alturaCm, edad, sexo, nivelActividad, stepGoal, waterGoal, goalType]);
+  }, [objetivoKcal, metaPeso, alturaCm, edad, sexo, nivelActividad, stepGoal, waterGoal, goalType]);
 
   const imc = calcularIMC(pesoActual, alturaCm);
   const clas = clasificarIMC(imc);
+  const bmiInfo = bmiInterpretation(imc, asianBackground);
+  const weightRange = healthyWeightRange(alturaCm);
+  const waistRatio = waistToHeightRatio(cinturaCm, alturaCm);
   const bmr = calcularBMR(pesoActual, alturaCm, edad, sexo);
   const kcalRec = calcularCaloriasRecomendadas(
     pesoActual,
@@ -270,6 +302,29 @@ export default function PerfilScreen() {
           <Text style={styles.title}>Calculator</Text>
 
           <Card style={styles.formCard}>
+            <SectionLabel>How to read BMI</SectionLabel>
+            <Text style={styles.infoCopy}>
+              BMI is a screening measure based on height and weight. It does not diagnose a condition or distinguish muscle from fat. This adult calculator is not intended for people under 18 or during pregnancy.
+            </Text>
+            <TouchableOpacity
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: asianBackground }}
+              onPress={() => setAsianBackground((value) => !value)}
+              style={[styles.activityRow, asianBackground && styles.activityActive]}
+            >
+              <Ionicons
+                name={asianBackground ? 'checkbox' : 'square-outline'}
+                size={21}
+                color={asianBackground ? colors.primary : colors.textMuted}
+              />
+              <View style={styles.activityInfo}>
+                <Text style={styles.activityLabel}>Use Asian adult screening thresholds</Text>
+                <Text style={styles.activityHint}>These thresholds can flag risk at a lower BMI.</Text>
+              </View>
+            </TouchableOpacity>
+          </Card>
+
+          <Card style={styles.formCard}>
             <SectionLabel>Your details</SectionLabel>
             <Field
               label="Current weight (kg)"
@@ -289,6 +344,18 @@ export default function PerfilScreen() {
                 onChangeText={setAlturaCm}
                 keyboardType="decimal-pad"
                 placeholder="e.g. 175"
+              />
+            </Field>
+
+            <Field
+              label="Waist circumference (cm) · optional"
+              hint="Measure around your waist, roughly midway between the bottom of your ribs and the top of your hips."
+            >
+              <Input
+                value={cinturaCm}
+                onChangeText={setCinturaCm}
+                keyboardType="decimal-pad"
+                placeholder="e.g. 82"
               />
             </Field>
 
@@ -370,11 +437,43 @@ export default function PerfilScreen() {
                 </Text>
                 <Text style={styles.resultSub}>
                   {bmr != null
-                    ? `Metabolism: ${Math.round(bmr)} kcal`
+                    ? `Resting energy estimate: ${Math.round(bmr)} kcal/day`
                     : 'Incomplete data'}
                 </Text>
               </View>
             </View>
+
+            {bmiInfo ? (
+              <View style={[styles.bmiGuide, bmiInfo.tone === 'warning' ? styles.bmiGuideWarning : styles.bmiGuideSuccess]}>
+                <Text style={styles.bmiGuideTitle}>{bmiInfo.category}</Text>
+                <Text style={styles.infoCopy}>{bmiInfo.detail}</Text>
+                <Text style={styles.bmiAction}>{bmiInfo.action}</Text>
+              </View>
+            ) : null}
+
+            {weightRange ? (
+              <View style={styles.measureRow}>
+                <Ionicons name="scale-outline" size={20} color={colors.primary} />
+                <Text style={styles.infoCopy}>
+                  Standard adult BMI range at {alturaCm} cm corresponds to about {weightRange.minKg}–{weightRange.maxKg} kg. This is a reference range, not a personal target.
+                </Text>
+              </View>
+            ) : null}
+
+            {waistRatio ? (
+              <View style={styles.measureRow}>
+                <Ionicons name="body-outline" size={20} color={waistRatio.value < 0.5 ? colors.primary : colors.warning} />
+                <Text style={styles.infoCopy}>
+                  Waist-to-height ratio: {waistRatio.value.toFixed(2)} ({waistRatio.category}). A ratio under 0.5 is a commonly used adult screening guide; it is not a diagnosis.
+                </Text>
+              </View>
+            ) : cinturaCm ? (
+              <Text style={styles.activityHint}>Enter a valid waist measurement and height to see the waist-to-height ratio.</Text>
+            ) : null}
+
+            <Text style={styles.disclaimer}>
+              For adults only. BMI interpretation can vary with age, ethnicity, pregnancy, muscle mass, and medical history. Speak with a healthcare professional about concerns or unexpected weight changes.
+            </Text>
 
             {kcalRec != null ? (
               <Button
@@ -383,7 +482,7 @@ export default function PerfilScreen() {
                 onPress={() => setObjetivoKcal(String(Math.round(kcalRec)))}
                 style={styles.applyBtn}
               >
-                Use {Math.round(kcalRec)} kcal as my goal
+                Use estimated maintenance calories ({Math.round(kcalRec)} kcal/day)
               </Button>
             ) : null}
           </Card>
@@ -421,6 +520,14 @@ export default function PerfilScreen() {
           </Card>
         ) : null}
 
+        <Card style={styles.formCard}>
+          <SectionLabel>Appearance</SectionLabel>
+          <Text style={styles.appearanceHint}>
+            Choose how OpenFit looks. System follows your device setting.
+          </Text>
+          <ChipGroup options={THEME_MODES} value={mode} onChange={setMode} />
+        </Card>
+
         <Grid cols={2}>
           <GridItem cols={1}>
             <Card style={styles.formCard}>
@@ -431,14 +538,33 @@ export default function PerfilScreen() {
                   ? 'Optional key from Google AI Studio. Stored in this browser. Google quotas/pricing may apply. Clear this field and save to remove it; rotate it in Google AI Studio. Before AI runs, OpenFit explains which meal, preference, chat, and health/profile details are sent to Gemini.'
                   : 'Optional key from Google AI Studio. Stored in device secure storage. Google quotas/pricing may apply. Clear this field and save to remove it; rotate it in Google AI Studio. Before AI runs, OpenFit explains which meal, preference, chat, and health/profile details are sent to Gemini.'}
               >
-                <Input
+                <PasswordInput
                   value={apiKey}
-                  onChangeText={setApiKey}
-                  placeholder="Your API key"
+                  onChangeText={(value) => {
+                    setApiKey(value);
+                    setApiKeyStatus('');
+                  }}
+                  placeholder="Paste your API key"
                   autoCapitalize="none"
                   autoCorrect={false}
-                  secureTextEntry
+                  autoComplete="off"
+                  textContentType="none"
+                  importantForAutofill="no"
                 />
+                <Button
+                  variant="secondary"
+                  icon="key-outline"
+                  onPress={saveApiKey}
+                  loading={savingApiKey}
+                  style={{ marginTop: spacing.sm }}
+                >
+                  Save API key
+                </Button>
+                {apiKeyStatus ? (
+                  <Text style={apiKeyStatus.includes('Could not') ? styles.estadoError : styles.estadoGuardado}>
+                    {apiKeyStatus}
+                  </Text>
+                ) : null}
               </Field>
             </Card>
           </GridItem>
@@ -526,7 +652,6 @@ export default function PerfilScreen() {
             <HealthConnectCard onOpenPrivacy={() => setPrivacyVisible(true)} />
           </>
         )}
-        <ShiftReminderCard />
         {goalType === 'lose' ? (
           <CalorieAdjustmentCard
             onApply={async (calorieGoal) => {
@@ -612,7 +737,7 @@ export default function PerfilScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -638,6 +763,15 @@ const styles = StyleSheet.create({
   accountLabel: { fontSize: font.sm, color: colors.textMuted },
   accountEmail: { fontSize: font.md, fontWeight: '600', color: colors.text },
   formCard: { marginBottom: spacing.md },
+  appearanceHint: { fontSize: font.sm, color: colors.textMuted, marginBottom: spacing.md },
+  infoCopy: { flex: 1, fontSize: font.sm, lineHeight: 20, color: colors.textMuted },
+  bmiGuide: { borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
+  bmiGuideWarning: { borderColor: colors.warning, backgroundColor: colors.warningSoft },
+  bmiGuideSuccess: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  bmiGuideTitle: { fontSize: font.md, fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
+  bmiAction: { fontSize: font.sm, fontWeight: '600', color: colors.text, marginTop: spacing.sm, lineHeight: 19 },
+  measureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, marginBottom: spacing.md },
+  disclaimer: { fontSize: font.xs, color: colors.textMuted, lineHeight: 17, marginTop: spacing.sm, marginBottom: spacing.md },
   activityRow: {
     flexDirection: 'row',
     alignItems: 'center',

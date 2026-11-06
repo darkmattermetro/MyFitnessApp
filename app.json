@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "openfit",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "backgroundColor": "#0B1114",
     "ios": {
       "supportsTablet": true,
@@ -68,12 +68,6 @@
         {
           "cameraPermission": "OpenFit uses the camera to photograph and estimate meals.",
           "microphonePermission": false
-        }
-      ],
-      [
-        "expo-notifications",
-        {
-          "enableRemoteNotifications": false
         }
       ],
       "./plugins/withHealthConnectRationale",

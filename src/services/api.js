@@ -29,6 +29,7 @@ export const patchDailyActivity = api.patchDailyActivity;
 export const listDailyActivity = api.listDailyActivity;
 export const listUserPreferences = api.listUserPreferences;
 export const createUserPreference = api.createUserPreference;
+export const updateUserPreference = api.updateUserPreference;
 export const deleteUserPreference = api.deleteUserPreference;
 export const parseFood = api.parseFood;
 export const analyzeFoodImage = api.analyzeFoodImage;

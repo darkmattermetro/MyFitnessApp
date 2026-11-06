@@ -2,7 +2,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform, StyleSheet, View } from 'react-native';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import RegistrarComidaScreen from '../screens/RegistrarComidaScreen';
@@ -40,6 +41,8 @@ const icons = {
 
 export default function AppNavigator() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
 
   return (
     <View style={{ flex: 1, paddingTop: IS_WEB ? 0 : insets.top }}>
@@ -83,7 +86,7 @@ export default function AppNavigator() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   sidebar: {
     width: 232,
     backgroundColor: colors.surface,

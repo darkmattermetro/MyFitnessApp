@@ -15,6 +15,74 @@ export function clasificarIMC(imc) {
   return { categoria: 'Obese', color: '#DC2626' };
 }
 
+// Adult screening bands; Asian thresholds are lower and are reported as an
+// informational alternative rather than silently changing the default BMI band.
+export function bmiInterpretation(imc, isAsianBackground = false) {
+  const value = Number(imc);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  if (value < 18.5) return {
+    category: 'Below the usual adult range',
+    detail: 'BMI is below 18.5. If this is unexpected, you have lost weight without trying, or you are concerned about nutrition, speak with a healthcare professional.',
+    action: 'Consider discussing your weight and nutrition with a healthcare professional.',
+    tone: 'warning',
+  };
+  if (!isAsianBackground && value < 23) return {
+    category: 'Within the standard adult range',
+    detail: 'BMI is within the standard adult range. For many Asian populations, health risks can begin at a lower BMI; selecting the Asian screening option shows that alternative context.',
+    action: 'For a broader picture, add waist circumference and track trends over time.',
+    tone: 'success',
+  };
+  if (isAsianBackground && value < 23) return {
+    category: 'Within the standard range',
+    detail: 'BMI is within the standard adult range. Some Asian populations may have increased health risk at lower BMI values, so waist measurement and other health factors can add context.',
+    action: 'For a broader picture, add waist circumference and track trends over time.',
+    tone: 'success',
+  };
+  if (value < (isAsianBackground ? 23 : 25)) return {
+    category: 'Within the standard adult range',
+    detail: 'BMI is within the standard adult range. BMI is a screening measure and does not directly measure body fat or overall health.',
+    action: 'Maintain sustainable activity, balanced meals, and regular health checkups.',
+    tone: 'success',
+  };
+  if (value < (isAsianBackground ? 27.5 : 30)) return {
+    category: isAsianBackground ? 'Above the Asian screening threshold' : 'Above the standard adult range',
+    detail: isAsianBackground
+      ? 'For many Asian populations, a BMI of 23 or higher can signal increased health risk. This is a screening threshold, not a diagnosis.'
+      : 'BMI is between 25 and 29.9. BMI alone cannot tell how much weight comes from muscle or where body fat is stored.',
+    action: 'If appropriate, measure your waist and discuss your overall risk with a healthcare professional.',
+    tone: 'warning',
+  };
+  return {
+    category: 'Above the adult screening range',
+    detail: isAsianBackground
+      ? 'For many Asian populations, a BMI of 27.5 or higher is a higher screening threshold. BMI alone cannot diagnose a condition or assess your full health.'
+      : 'BMI is 30 or higher. This screening result needs context such as waist size, medical history, muscle mass, and other health measures.',
+    action: 'Consider a non-urgent health review to discuss personal measurements and supportive next steps.',
+    tone: 'warning',
+  };
+}
+
+export function healthyWeightRange(heightCm) {
+  const height = Number(heightCm);
+  if (!Number.isFinite(height) || height <= 0) return null;
+  const heightM = height / 100;
+  return {
+    minKg: Math.round(18.5 * heightM * heightM * 10) / 10,
+    maxKg: Math.round(24.9 * heightM * heightM * 10) / 10,
+  };
+}
+
+export function waistToHeightRatio(waistCm, heightCm) {
+  const waist = Number(waistCm);
+  const height = Number(heightCm);
+  if (![waist, height].every(Number.isFinite) || waist <= 0 || height <= 0 || waist > 300 || height > 250) return null;
+  const ratio = waist / height;
+  return {
+    value: Math.round(ratio * 100) / 100,
+    category: ratio < 0.5 ? 'Below 0.5' : ratio < 0.6 ? 'Increased central adiposity range' : 'Higher central adiposity range',
+  };
+}
+
 export function calcularBMR(pesoKg, alturaCm, edad, sexo) {
   const peso = Number(pesoKg);
   const altura = Number(alturaCm);

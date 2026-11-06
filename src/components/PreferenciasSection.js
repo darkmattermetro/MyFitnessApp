@@ -4,15 +4,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button, Card, Input, SectionLabel } from './ui';
 import { useToast } from './Toast';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import {
   listUserPreferences,
   createUserPreference,
   deleteUserPreference,
   mejorarPreferencia,
 } from '../services/api';
+import { isDietPreference } from '../utils/dietPreference.mjs';
+import { friendlyError } from '../utils/networkErrors.mjs';
+
+const onlyFoodPreferences = (prefs) => (prefs || []).filter((p) => !isDietPreference(p?.texto));
 
 export default function PreferenciasSection() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [preferencias, setPreferencias] = useState([]);
   const [prefNueva, setPrefNueva] = useState('');
   const [mejorando, setMejorando] = useState(false);
@@ -22,9 +29,9 @@ export default function PreferenciasSection() {
   useFocusEffect(
     useCallback(() => {
       listUserPreferences()
-        .then(setPreferencias)
+        .then((prefs) => setPreferencias(onlyFoodPreferences(prefs)))
         .catch((e) =>
-          toast(e.message || 'Could not load your preferences.', 'error'),
+          toast(friendlyError(e, 'Could not load your preferences.'), 'error'),
         );
     }, [toast]),
   );
@@ -40,10 +47,10 @@ export default function PreferenciasSection() {
       await createUserPreference(texto);
       setPrefNueva('');
       const prefs = await listUserPreferences();
-      setPreferencias(prefs);
+      setPreferencias(onlyFoodPreferences(prefs));
       toast('Preference saved.', 'success');
     } catch (e) {
-      toast(e.message || 'Could not save the preference.', 'error');
+      toast(friendlyError(e, 'Could not save the preference.'), 'error');
     } finally {
       setAgregandoPref(false);
     }
@@ -61,7 +68,7 @@ export default function PreferenciasSection() {
       setPrefNueva(mejorada);
       toast('Preference improved. Review it and save when ready.', 'success');
     } catch (e) {
-      toast(e.message || 'Could not improve the preference.', 'error');
+      toast(friendlyError(e, 'Could not improve the preference.'), 'error');
     } finally {
       setMejorando(false);
     }
@@ -72,7 +79,7 @@ export default function PreferenciasSection() {
       await deleteUserPreference(id);
       setPreferencias((prev) => prev.filter((p) => p.id !== id));
     } catch (e) {
-      toast(e.message || 'Could not delete the preference.', 'error');
+      toast(friendlyError(e, 'Could not delete the preference.'), 'error');
     }
   };
 
@@ -132,7 +139,7 @@ export default function PreferenciasSection() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   calcHint: { fontSize: font.base, color: colors.textMuted, marginBottom: spacing.md },
   prefInput: { minHeight: 88, textAlignVertical: 'top' },
   prefActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },

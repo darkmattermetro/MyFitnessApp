@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, PasswordInput } from '../components/ui';
-import { colors, font, spacing } from '../theme/colors';
+import { font, spacing } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { updatePassword } from '../services/auth';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 export default function ResetPasswordScreen({ onComplete }) {
+  const styles = useThemedStyles(makeStyles);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState('');
@@ -25,7 +28,7 @@ export default function ResetPasswordScreen({ onComplete }) {
       await updatePassword(password);
       onComplete?.();
     } catch (e) {
-      setError(e.message || 'Could not update your password. Request a new reset email.');
+      setError(friendlyError(e, 'Could not update your password. Request a new reset email.'));
     } finally {
       setSaving(false);
     }
@@ -64,7 +67,7 @@ export default function ResetPasswordScreen({ onComplete }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   container: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg },
   form: { width: '100%', maxWidth: 420, alignSelf: 'center' },

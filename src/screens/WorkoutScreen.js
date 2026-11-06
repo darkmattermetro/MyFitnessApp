@@ -19,7 +19,8 @@ import ExercisePicker from '../components/ExercisePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
 import CoachModal from '../components/CoachModal';
 import { useToast } from '../components/Toast';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { TEMPLATES, MUSCLE_LABEL, findExercise, planForDate } from '../data/exercises';
 import {
   createWorkoutSession,
@@ -40,6 +41,7 @@ import {
   uid,
   weekStats,
 } from '../utils/workout';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 const REST_DEFAULT = 90;
 const IS_WEB = Platform.OS === 'web';
@@ -104,6 +106,8 @@ function buildPlanExercise(item, last) {
 
 export default function WorkoutScreen() {
   const { isDesktop } = useResponsive();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { showToast } = useToast();
 
   const [sessions, setSessions] = useState([]);
@@ -131,7 +135,7 @@ export default function WorkoutScreen() {
       const rows = await listWorkoutSessions();
       setSessions(rows);
     } catch (e) {
-      setError(e.message || 'Could not load your workouts.');
+      setError(friendlyError(e, 'Could not load your workouts.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -343,7 +347,7 @@ export default function WorkoutScreen() {
       showToast('Workout saved. Nice work!', 'success');
       await cargar();
     } catch (e) {
-      if (!controller.signal.aborted) showToast(e.message || 'Could not save the workout.', 'error');
+      if (!controller.signal.aborted) showToast(friendlyError(e, 'Could not save the workout.'), 'error');
     } finally {
       saveLockRef.current = false;
       setSaving(false);
@@ -365,7 +369,7 @@ export default function WorkoutScreen() {
       showToast('Workout deleted.', 'success');
       await cargar();
     } catch (e) {
-      showToast(e.message || 'Could not delete the workout.', 'error');
+      showToast(friendlyError(e, 'Could not delete the workout.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -901,7 +905,7 @@ export default function WorkoutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, paddingBottom: spacing.lg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },

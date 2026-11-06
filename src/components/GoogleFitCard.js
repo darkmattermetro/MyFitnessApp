@@ -3,7 +3,8 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 import * as Google from 'expo-auth-session/providers/google';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card } from './ui';
-import { colors, font, radius, spacing } from '../theme/colors';
+import { font, radius, spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import {
   isConfigured,
   getClientIds,
@@ -16,9 +17,12 @@ import {
   syncSteps,
 } from '../services/googleFit';
 import { useToast } from './Toast';
+import { friendlyError } from '../utils/networkErrors.mjs';
 
 export default function GoogleFitCard() {
   const toast = useToast();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [tokens, setTokens] = useState(null);
   const [lastSync, setLastSync] = useState(null);
   const [activitySummary, setActivitySummary] = useState([]);
@@ -109,6 +113,8 @@ function GoogleFitConnection({
   setSyncing,
   toast,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [request, response, promptAsync] = Google.useAuthRequest({
     scopes: ['https://www.googleapis.com/auth/fitness.activity.read'],
     webClientId: ids.web,
@@ -137,7 +143,7 @@ function GoogleFitConnection({
         })
         .catch(() => toast.showToast('Google connected, but the connection could not be saved.'));
     } else if (response?.type === 'error') {
-      toast.showToast(response.error?.message || 'Could not connect your Google account.');
+      toast.showToast(friendlyError(response.error, 'Could not connect your Google account.'));
     }
   }, [response, setTokens, toast]);
 
@@ -162,7 +168,7 @@ function GoogleFitConnection({
             setLastSync(null);
             setActivitySummary([]);
           }
-          toast.showToast(error.message || 'Automatic activity sync failed.');
+          toast.showToast(friendlyError(error, 'Automatic activity sync failed.'));
         }
       } finally {
         if (active) setSyncing(false);
@@ -192,7 +198,7 @@ function GoogleFitConnection({
         setLastSync(null);
         setActivitySummary([]);
       }
-      toast.showToast(error.message || 'Step sync failed. Reconnect Google Fit and try again.');
+      toast.showToast(friendlyError(error, 'Step sync failed. Reconnect Google Fit and try again.'));
     } finally {
       setSyncing(false);
     }
@@ -283,6 +289,7 @@ function formatMetric(value) {
 }
 
 function SummaryMetric({ label, value }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.metric}>
       <Text style={styles.metricValue}>{value}</Text>
@@ -291,7 +298,7 @@ function SummaryMetric({ label, value }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   card: { marginBottom: spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   title: { flex: 1, fontSize: font.base, fontWeight: '700', color: colors.text },

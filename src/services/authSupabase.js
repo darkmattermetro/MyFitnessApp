@@ -2,8 +2,10 @@
 // they use the facade in ./auth, which picks between this backend and demo.
 
 import { supabase } from './supabaseClient';
+import { NO_INTERNET, friendlyError, isOfflineError } from '../utils/networkErrors.mjs';
 
 function messageFor(error) {
+  if (isOfflineError(error)) return NO_INTERNET;
   const m = error?.message?.toLowerCase() || '';
   if (m.includes('already registered')) return 'That email is already registered. Sign in instead.';
   if (m.includes('weak_password')) return 'Password must be at least 6 characters.';
@@ -11,7 +13,7 @@ function messageFor(error) {
   if (m.includes('email not confirmed')) return 'Confirm your email before signing in.';
   if (m.includes('invalid email')) return 'That email is not valid.';
   if (m.includes('password should be at least')) return 'Password must be at least 6 characters.';
-  return error?.message || 'Something went wrong. Please try again.';
+  return friendlyError(error, 'Something went wrong. Please try again.');
 }
 
 export async function signUp(email, password) {
@@ -46,7 +48,7 @@ export async function signOut() {
 
 export async function deleteAccount() {
   const { data, error } = await supabase.functions.invoke('delete-account', { body: {} });
-  if (error) throw new Error(error.message || 'Could not delete the account.');
+  if (error) throw new Error(friendlyError(error, 'Could not delete the account.'));
   if (data?.error) throw new Error(data.error);
   // The server has already removed this user's auth record. Clear the local
   // session without making account deletion look like it failed if remote

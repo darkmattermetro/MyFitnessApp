@@ -10,7 +10,8 @@ import Svg, {
   Stop,
   Text as SvgText,
 } from 'react-native-svg';
-import { colors, spacing } from '../theme/colors';
+import { spacing } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 const PAD_LEFT = 42;
 const PAD_RIGHT = 10;
@@ -31,8 +32,11 @@ export default function PesoChart({
   meta = null,
   height = 220,
   width,
-  color = colors.primary,
+  color: colorProp,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const color = colorProp || colors.primary;
   const [selected, setSelected] = useState(null);
 
   const resolverPuntoWeb = (evt) => {
@@ -238,7 +242,7 @@ export default function PesoChart({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   vacio: { alignItems: 'center', justifyContent: 'center' },
   vacioText: { color: colors.textMuted, fontSize: 13 },
   tooltip: {
